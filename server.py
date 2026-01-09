@@ -9,18 +9,12 @@ from app.config import Config
 from app.database import init_db, migrate_db
 
 # Initialize DB and App for Production (Gunicorn)
-print(f"[SERVER] Starting... DATABASE_URL set: {bool(Config.DATABASE_URL)}", flush=True)
-try:
-    init_db()
-    migrate_db()
-    print("[SERVER] Database ready", flush=True)
-except Exception as e:
-    print(f"[SERVER] Database init error: {e}", flush=True)
-    sys.exit(1)
-
+# DB initialization is now handled via manage.py in Procfile
 app = create_app()
 
 def main():
+    print()
+    print("=" * 50)
     print()
     print("=" * 50)
     print("  NAARAD (नारद) - Email Tracker")

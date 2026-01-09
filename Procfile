@@ -1,1 +1,1 @@
-web: gunicorn --bind 0.0.0.0:$PORT server:app
+web: python manage.py init_all && gunicorn --bind 0.0.0.0:$PORT server:app
