@@ -24,8 +24,17 @@ def close_db(e=None):
         db.close()
 
 def init_db():
-    """Initialize database tables."""
-    conn = get_db()
+    """Initialize database tables.
+    
+    Uses a direct connection (not flask.g) since this runs at startup,
+    not within a request context.
+    """
+    db_dir = os.path.dirname(Config.DB_FILE)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+    
+    conn = sqlite3.connect(Config.DB_FILE)
+    conn.row_factory = sqlite3.Row
     
     # Main tracking table - captures maximum information
     conn.execute('''
@@ -123,12 +132,16 @@ def init_db():
     conn.execute('CREATE INDEX IF NOT EXISTS idx_device ON tracks(device_type)')
     
     conn.commit()
-    # conn.close() - Handled by teardown_appcontext
+    conn.close()
     print("[DB] Initialized")
 
 def migrate_db():
-    """Add new columns to existing database if they don't exist."""
-    conn = get_db()
+    """Add new columns to existing database if they don't exist.
+    
+    Uses a direct connection (not flask.g) since this runs at startup,
+    not within a request context.
+    """
+    conn = sqlite3.connect(Config.DB_FILE)
     cursor = conn.cursor()
     
     # Get existing columns
@@ -158,4 +171,4 @@ def migrate_db():
                 pass  # Column already exists
     
     conn.commit()
-    # conn.close() - Handled by teardown_appcontext
+    conn.close()

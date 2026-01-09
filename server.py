@@ -8,11 +8,10 @@ from app.config import Config
 from app.database import init_db, migrate_db
 
 # Initialize DB and App for Production (Gunicorn)
+# init_db and migrate_db use direct connections, no Flask context needed
+init_db()
+migrate_db()
 app = create_app()
-
-with app.app_context():
-    init_db()
-    migrate_db()
 
 def main():
     print()
