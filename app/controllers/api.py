@@ -140,6 +140,8 @@ def debug():
                 status['init_result'] = f'Error: {str(e)}'
                 
     except Exception as e:
+        import traceback
         status['error'] = str(e)
+        status['traceback'] = traceback.format_exc()
         
     return jsonify(status)
