@@ -113,38 +113,4 @@ def export():
     
     return jsonify({'tracks': items})
 
-from app.database import init_db
 
-@bp_api.route('/debug')
-def debug():
-    """Debug database connection and state."""
-    conn = get_db()
-    cursor = get_cursor(conn)
-    
-    status = {
-        'database_url_set': bool(Config.DATABASE_URL),
-        'db_type': 'PostgreSQL' if bool(Config.DATABASE_URL) else 'SQLite'
-    }
-    
-    try:
-        cursor.execute("SELECT to_regclass('public.tracks')")
-        row = cursor.fetchone()
-        # Handle dict (Postgres) or tuple (SQLite)
-        val = row['to_regclass'] if hasattr(row, 'get') else row[0]
-        table_exists = val is not None
-        status['tracks_table_exists'] = table_exists
-        
-        if not table_exists:
-            status['action'] = 'Attempting manual table creation...'
-            try:
-                init_db()
-                status['init_result'] = 'Success'
-            except Exception as e:
-                status['init_result'] = f'Error: {str(e)}'
-                
-    except Exception as e:
-        import traceback
-        status['error'] = str(e)
-        status['traceback'] = traceback.format_exc()
-        
-    return jsonify(status)

@@ -1,147 +1,55 @@
-# Naarad (नारद)
+# Naarad (नारद) - Email Tracker
 
-A lightweight, open-source email tracking server for personal use and learning.
-
-Developed by [musashi](https://www.linkedin.com/in/gayathra-bhatt/)
-
----
+A simple, open-source email tracking pixel and link analytics service.
 
 ## Features
+- **Open Tracking**: Invisible 1x1 pixel to track email opens.
+- **Link Tracking**: Redirect service to track link clicks.
+- **Detailed Analytics**: Geo-location, Device, Browser, OS, specific timestamps.
+- **Privacy Focused**: Self-hosted, you own the data.
 
-- **Tracking Pixel** - Invisible 1x1 PNG served on email open
-- **Click Tracking** - Track link clicks with automatic redirect
-- **Geolocation** - IP-based location lookup (country, city, ISP, org, ASN)
-- **Device Detection** - Browser, OS, device type parsing from User-Agent
-- **Client Hints** - Modern browser detection via Sec-CH-UA headers
-- **Dashboard** - Dark-themed responsive UI with real-time stats
-- **REST API** - JSON endpoints for all data
-- **Export** - CSV/JSON data export
-- **Webhooks** - Optional notifications on events
+## Deployment Options
 
----
+### 1. Local Development (Windows/Linux/Mac)
+Good for testing or personal use on a single machine.
 
-## Quick Start
+1.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  **Initialize Database**:
+    ```bash
+    python manage.py init_all
+    ```
+3.  **Run Server**:
+    ```bash
+    python server.py
+    ```
+    Access at `http://localhost:8080`.
 
-```bash
-# Clone
-git clone https://github.com/Th3C0D3B734K37/naarad.git
-cd naarad
+### 2. Private Network (LAN)
+To access the dashboard from other devices on your WiFi (e.g., test on phone):
 
-# Install
-pip install -r requirements.txt
+1.  Follow "Local Development" steps.
+2.  The server automatically binds to `0.0.0.0`.
+3.  Find your local IP address (`ipconfig` on Windows, `ifconfig` on Mac/Linux).
+4.  Open `http://<YOUR_IP>:8080` (e.g., `http://192.168.1.10:8080`) on your other device.
+    *Note: Ensure your firewall allows traffic on port 8080.*
 
-# Run
-python server.py
+### 3. Production (Railway)
+**Recommended for always-on usage.**
 
-# Open
-http://localhost:8080
-```
-
----
-
-## Usage
-
-### Track Email Opens
-
-```html
-<img src="https://YOUR_SERVER/track?id=recipient@email.com" width="1" height="1" />
-```
-
-### With Metadata
-
-```html
-<img src="https://YOUR_SERVER/track?id=proposal_v1&sender=me&recipient=client@gmail.com&subject=Quote" width="1" height="1" />
-```
-
-### Track Link Clicks
-
-```html
-<a href="https://YOUR_SERVER/click/recipient/https%3A%2F%2Fexample.com">Click here</a>
-```
-
----
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/track?id=ID` | GET | Serve tracking pixel |
-| `/click/ID/URL` | GET | Track click & redirect |
-| `/api/stats` | GET | Dashboard statistics |
-| `/api/tracks` | GET | List tracking events |
-| `/api/track/ID` | GET | Event details |
-| `/api/export` | GET | Export data (CSV/JSON) |
-| `/api/generate` | POST | Generate trackable links |
-
----
+1.  **Deploy Code**: Push this repository to GitHub and link it in Railway.
+2.  **Add Database**: In Railway, add a **PostgreSQL** database service.
+3.  **Connect**: Link the Postgres variable `DATABASE_URL` to your web service.
+    - Railway usually does this automatically if you add Postgres to the same project.
+    - If not, go to Web Service -> Variables -> Add `DATABASE_URL` matching the Postgres connection string.
+4.  **Auto-Init**: The app automatically runs database migrations on every deploy (defined in `Procfile`).
 
 ## Configuration
+- `PORT`: Server port (default: 8080)
+- `DATABASE_URL`: Postgres connection string (if set, uses Postgres. If not, uses local SQLite `tracking.db`).
+- `API_KEY`: Protects the dashboard/stats (Optional, set in `config.py` or env vars).
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | 8080 | Server port |
-| `HOST` | 0.0.0.0 | Bind address |
-| `DEBUG` | false | Debug mode |
-| `REQUIRE_AUTH` | false | Require API key |
-| `API_KEY` | (random) | API key for protected endpoints |
-| `WEBHOOK_URL` | none | Webhook notification URL |
-
----
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [SETUP.md](Documentation/SETUP.md) | Installation & deployment (Railway, Render, Docker) |
-| [USAGE.md](Documentation/USAGE.md) | User guide for tracking emails |
-| [TESTING.md](Documentation/TESTING.md) | Testing locally, on network, and with email clients |
-| [DEVELOPERS.md](Documentation/DEVELOPERS.md) | Code architecture, workflows, and extension guide |
-| [ARCHITECTURE.md](Documentation/ARCHITECTURE.md) | Project structure overview |
-
----
-
-## Project Structure
-
-```
-naarad/
-├── app/
-│   ├── controllers/     # Route handlers (tracking, api, generators)
-│   ├── services/        # Business logic (geo, ua parsing)
-│   ├── static/css/      # Modular CSS (4 files)
-│   ├── templates/       # Dashboard HTML
-│   ├── config.py        # Environment configuration
-│   ├── database.py      # SQLite interface + migrations
-│   └── utils.py         # Sanitization, hashing, webhooks
-├── Documentation/       # 5 guide files
-├── server.py            # Entry point
-├── Procfile             # Production server (gunicorn)
-└── requirements.txt     # Flask, Flask-CORS, gunicorn
-```
-
----
-
-## Data Captured
-
-Each tracking event captures:
-
-**Network:** IP address, country, city, region, timezone, ISP, organization, ASN
-
-**Device:** User-Agent, browser, OS, device type, brand, mobile/bot detection
-
-**Headers:** Accept, Accept-Encoding, Accept-Language, DNT, Cache-Control, Referer
-
-**Client Hints:** Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform
-
-**Custom:** sender, recipient, subject, campaign, sent_at
-
----
-
-## License
-
-MIT License - See [LICENSE](LICENSE)
-
----
-
-## Disclaimer
-
-For educational and personal use. Comply with privacy laws (GDPR, CAN-SPAM) when tracking emails.
+## Troubleshooting
+See [troubleshoot.md](troubleshoot.md) for common issues like "Internal Server Error" or connection problems.
