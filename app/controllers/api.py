@@ -128,7 +128,10 @@ def debug():
     
     try:
         cursor.execute("SELECT to_regclass('public.tracks')")
-        table_exists = cursor.fetchone()[0] is not None
+        row = cursor.fetchone()
+        # Handle dict (Postgres) or tuple (SQLite)
+        val = row['to_regclass'] if hasattr(row, 'get') else row[0]
+        table_exists = val is not None
         status['tracks_table_exists'] = table_exists
         
         if not table_exists:
