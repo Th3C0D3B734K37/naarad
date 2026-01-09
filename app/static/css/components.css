@@ -1,0 +1,317 @@
+.actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 0.8rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.btn:hover {
+    background: var(--bg-hover);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #1a1816;
+    border-color: var(--accent);
+}
+
+.btn-primary:hover {
+    background: #b8974f;
+}
+
+.card {
+    background: var(--bg-card);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.card-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.card-body {
+    padding: 0.75rem;
+}
+
+.sidebar .card {
+    margin-bottom: 0.75rem;
+}
+
+/* Stats */
+.stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat {
+    background: var(--bg-card);
+    padding: 1rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+/* Charts */
+.chart-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    font-size: 0.8rem;
+}
+
+.chart-row:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+}
+
+.chart-bar {
+    flex: 1;
+    height: 3px;
+    background: var(--bg);
+    margin: 0 0.75rem;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.chart-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+}
+
+/* Tables */
+.table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+th,
+td {
+    padding: 0.6rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+tr {
+    transition: background 0.1s;
+}
+
+tr:hover td {
+    background: var(--bg-hover);
+}
+
+tr:active td {
+    background: var(--border);
+}
+
+/* Utilities */
+.mono {
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    background: var(--bg);
+    color: var(--text-muted);
+}
+
+.usage {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.usage h3 {
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.code {
+    background: var(--bg);
+    padding: 0.75rem;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    overflow-x: auto;
+    margin-top: 0.5rem;
+    word-break: break-all;
+}
+
+.code .hl {
+    color: var(--accent);
+}
+
+.empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.live {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.live-dot {
+    width: 5px;
+    height: 5px;
+    background: #4ade80;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+}
+
+/* ===================
+   MOBILE RESPONSIVE
+   =================== */
+
+/* Tablets */
+@media (max-width: 900px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+
+    .sidebar .card {
+        margin-bottom: 0;
+    }
+}
+
+/* Large phones */
+@media (max-width: 768px) {
+    .stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .sidebar {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+    .stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    .stat {
+        padding: 0.75rem 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .stat-label {
+        font-size: 0.6rem;
+    }
+}
+
+@media (max-width: 600px) {
+
+    th,
+    td {
+        padding: 0.5rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    .hide-mobile {
+        display: none;
+    }
+
+    .mono {
+        font-size: 0.7rem;
+    }
+
+    .badge {
+        font-size: 0.6rem;
+        padding: 0.1rem 0.3rem;
+    }
+
+    /* Make table rows tappable */
+    tr {
+        cursor: pointer;
+    }
+}

@@ -1,0 +1,43 @@
+:root {
+    --bg: #1a1816;
+    --bg-card: #242220;
+    --bg-hover: #2e2c2a;
+    --text: #e8e4df;
+    --text-muted: #8a8580;
+    --accent: #c9a86c;
+    --border: #3a3836;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+@font-face {
+    font-family: 'Geist';
+    src: url('https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-sans/Geist-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Geist';
+    src: url('https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-sans/Geist-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+}
+
+body {
+    font-family: 'Geist', 'Geist Fallback', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+::selection {
+    background: var(--accent);
+    color: #1a1816;
+}

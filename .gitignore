@@ -1,0 +1,91 @@
+# ===================
+# Python
+# ===================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===================
+# Virtual Environments
+# ===================
+env/
+venv/
+.venv/
+ENV/
+
+# ===================
+# Database
+# ===================
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# ===================
+# Environment Variables
+# ===================
+.env
+.env.local
+.env.*.local
+
+# ===================
+# IDE / Editor
+# ===================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ===================
+# OS Files
+# ===================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===================
+# Logs & Temp
+# ===================
+*.log
+logs/
+tmp/
+temp/
+
+# ===================
+# Generated Files
+# ===================
+pixels/
+exports/
+*.csv
+
+# ===================
+# Misc
+# ===================
+*.resolved
+*.bak
+*.orig
