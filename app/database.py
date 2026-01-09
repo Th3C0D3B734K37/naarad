@@ -7,7 +7,9 @@ from .config import Config
 
 def get_db():
     """Get database connection with row factory."""
-    os.makedirs(os.path.dirname(Config.DB_FILE), exist_ok=True)
+    db_dir = os.path.dirname(Config.DB_FILE)
+    if db_dir:  # Only create directory if path includes one
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(Config.DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn

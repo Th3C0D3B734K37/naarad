@@ -12,8 +12,8 @@ class Config:
     PORT = int(os.getenv('PORT', 8080))
     DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
     
-    # Database
-    DB_FILE = os.getenv('DB_FILE', 'data/tracking.db')
+    # Database - use current directory for simpler deployment
+    DB_FILE = os.getenv('DB_FILE', 'tracking.db')
     
     # Security
     SECRET_KEY = os.getenv('SECRET_KEY', secrets.token_hex(32))
