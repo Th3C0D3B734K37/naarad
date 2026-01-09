@@ -67,38 +67,34 @@ function renderChart(id, data) {
 function renderTracks(tracks) {
     const el = document.getElementById('tracks');
     if (!tracks || !tracks.length) {
-        el.innerHTML = '<tr><td colspan="9" class="empty">No pixels found</td></tr>';
+        el.innerHTML = '<tr><td colspan="6" class="empty">No recent activity</td></tr>';
         return;
     }
 
     el.innerHTML = tracks.map(t => `
         <tr onclick="openDetail('${t.track_id}')" style="cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.2s">
-            <td style="padding:0.8rem">
-                <div style="font-weight:bold; color:white; font-size:0.9rem">${esc(t.label || t.track_id)}</div>
+            <td style="padding:1rem">
+                <div style="font-weight:600; color:#e5e5e5; font-size:0.9rem; margin-bottom:2px">${esc(t.label || 'Unknown Client')}</div>
                 <div class="mono" style="font-size:0.75rem; color:#555">${esc(t.track_id)}</div>
             </td>
-            <td style="padding:0.8rem; font-size:0.85rem; color:#aaa">
-                ${t.flag ? t.flag + ' ' : ''}${esc(t.city || '-')}, ${esc(t.country_code || t.country || '-')}
+            <td style="padding:1rem; font-size:0.85rem; color:#aaa">
+                ${t.city ? `<span style="color:#ddd">${esc(t.city)}</span>, ` : ''}${esc(t.country || 'Unknown')}
             </td>
-            <td class="hide-mobile" style="padding:0.8rem; font-size:0.85rem; color:#aaa">${esc(t.sender || '-')}</td>
-            <td class="hide-mobile" style="padding:0.8rem; font-size:0.85rem; color:#aaa">${esc(t.recipient || '-')}</td>
-            <td class="hide-mobile" style="padding:0.8rem; font-size:0.85rem; color:#888">${esc(t.subject?.substring(0, 30) || '')}</td>
-             <td class="hide-mobile" style="padding:0.8rem;">
-                <span class="badge" style="background:#222; border:1px solid #333; color:#aaa; font-size:0.7rem">
-                    ${esc(t.device_type || 'Unknown')}
-                </span>
+            <td class="hide-mobile" style="padding:1rem; font-size:0.85rem; color:#888">
+                ${esc(t.device_type || 'Desktop')} <span style="opacity:0.5">•</span> ${esc(t.os || '-')}
             </td>
-            <td class="hide-mobile" style="padding:0.8rem; text-align:center">
-                <div style="display:flex; gap:0.5rem; justify-content:center">
-                    <span class="badge" style="background:rgba(74, 222, 128, 0.1); color:#4ade80; border:none">${t.open_count}</span>
-                    <span class="badge" style="background:rgba(59, 130, 246, 0.1); color:#60a5fa; border:none">${t.click_count || 0}</span>
+            <td style="padding:1rem; text-align:center">
+                <div style="display:inline-flex; align-items:center; gap:6px; background:#1a1a1a; padding:4px 8px; border-radius:12px; border:1px solid #333">
+                    <span style="color:#4ade80; font-weight:600; font-size:0.8rem">${t.open_count}</span>
+                    <span style="width:1px; height:10px; background:#333"></span>
+                    <span style="color:#60a5fa; font-size:0.8rem">${t.click_count || 0}</span>
                 </div>
             </td>
-            <td style="padding:0.8rem; font-size:0.8rem; color:#666">
+            <td style="padding:1rem; text-align:right; font-size:0.8rem; color:#666; font-family:monospace">
                 ${t.last_seen ? timeAgo(new Date(t.last_seen)) : '-'}
             </td>
-            <td style="padding:0.8rem; text-align:right">
-                <button class="btn-icon" style="padding:0.4rem; color:inherit" onclick="event.stopPropagation(); deleteTrack('${t.track_id}')" title="Delete">
+            <td style="padding:1rem; text-align:right" onclick="event.stopPropagation()">
+                <button class="btn-icon" style="padding:0.4rem; color:#444" onclick="deleteTrack('${t.track_id}')" title="Delete">
                     <svg class="icon" style="width:16px;height:16px" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                 </button>
             </td>
@@ -125,9 +121,14 @@ function openDetail(id) {
     const t = window.loadedTracks.find(x => x.track_id === id);
     if (!t) return;
 
-    // ... Detail modal content: Keep existing or simplified? 
-    // I'll keep the full detail view logic from before but refined
+    // Google Maps Link
+    const mapLink = (t.latitude && t.longitude)
+        ? `<a href="https://www.google.com/maps/search/?api=1&query=${t.latitude},${t.longitude}" target="_blank" style="color:#60a5fa; text-decoration:none; display:flex; align-items:center; gap:4px; font-size:0.8rem; margin-top:4px">
+             See on Map <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+           </a>`
+        : '';
 
+    // Ensure all fields are safe
     const sections = [
         {
             title: "Identity & Context",
@@ -144,7 +145,8 @@ function openDetail(id) {
                 { label: 'Generic', value: `${t.city || ''}, ${t.country || ''}` },
                 { label: 'IP Address', value: t.ip_address, mono: true },
                 { label: 'ISP / Org', value: t.isp || t.org },
-                { label: 'Timezone', value: t.timezone }
+                { label: 'Location', value: `${t.city || '-'}, ${t.country || '-'}`, raw: mapLink },
+                { label: 'Coordinates', value: (t.latitude && t.longitude) ? `${t.latitude}, ${t.longitude}` : '-', mono: true }
             ]
         },
         {
@@ -161,8 +163,8 @@ function openDetail(id) {
             items: [
                 { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : '-' },
                 { label: 'Last Activity', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : '-' },
-                { label: 'Total Opens', value: t.open_count },
-                { label: 'Total Clicks', value: t.click_count || 0 }
+                { label: 'Total Opens', value: t.open_count, highlight: true },
+                { label: 'Total Clicks', value: t.click_count || 0, highlight: true }
             ]
         }
     ];
@@ -176,6 +178,7 @@ function openDetail(id) {
                         <div class="detail-label">${f.label}</div>
                         <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
                             ${esc(f.value || '-')}
+                            ${f.raw || ''}
                         </div>
                     </div>
                 `).join('')}
@@ -318,67 +321,7 @@ function exportData() {
     window.open('/api/export?format=csv', '_blank');
 }
 
-// Generator Tools
-async function generateTools() {
-    const idInput = document.getElementById('gen-id');
-    const urlInput = document.getElementById('gen-url');
-    const resultDiv = document.getElementById('gen-result');
 
-    let id = idInput.value.trim();
-    const url = urlInput.value.trim();
-
-    if (!id) {
-        id = 'track-' + Date.now().toString(36);
-        idInput.value = id;
-    }
-
-    const base = window.location.origin;
-
-    // 1. Pixel
-    // Note: We construct this client-side for speed, but could use /api/generate
-    const pixelUrl = `${base}/track?id=${encodeURIComponent(id)}`;
-    const pixelTag = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
-    document.getElementById('res-pixel').textContent = pixelTag;
-
-    // 2. Link
-    const linkGroup = document.getElementById('res-link-group');
-    if (url) {
-        try {
-            // Use API for safe encoding
-            const res = await fetch('/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ track_id: id, url: url })
-            });
-            const data = await res.json();
-
-            if (data.click_url) {
-                document.getElementById('res-link').textContent = base + data.click_url;
-                linkGroup.style.display = 'block';
-            }
-        } catch (e) {
-            console.error(e);
-            // Fallback
-            document.getElementById('res-link').textContent = `${base}/click/${encodeURIComponent(id)}/${encodeURIComponent(url)}`;
-            linkGroup.style.display = 'block';
-        }
-    } else {
-        linkGroup.style.display = 'none';
-    }
-
-    resultDiv.style.display = 'block';
-}
-
-function copyText(el) {
-    const text = el.textContent;
-    navigator.clipboard.writeText(text).then(() => {
-        const original = el.style.backgroundColor;
-        el.style.backgroundColor = 'rgba(74, 222, 128, 0.2)';
-        setTimeout(() => {
-            el.style.backgroundColor = original;
-        }, 200);
-    });
-}
 
 load();
 setInterval(load, 30000);
