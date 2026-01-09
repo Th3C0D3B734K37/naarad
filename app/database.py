@@ -5,14 +5,23 @@ import sqlite3
 import os
 from .config import Config
 
+from flask import g
+
 def get_db():
     """Get database connection with row factory."""
-    db_dir = os.path.dirname(Config.DB_FILE)
-    if db_dir:  # Only create directory if path includes one
-        os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(Config.DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if 'db' not in g:
+        db_dir = os.path.dirname(Config.DB_FILE)
+        if db_dir:  # Only create directory if path includes one
+            os.makedirs(db_dir, exist_ok=True)
+        g.db = sqlite3.connect(Config.DB_FILE)
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+def close_db(e=None):
+    """Close the database connection if it exists."""
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 def init_db():
     """Initialize database tables."""
@@ -114,7 +123,7 @@ def init_db():
     conn.execute('CREATE INDEX IF NOT EXISTS idx_device ON tracks(device_type)')
     
     conn.commit()
-    conn.close()
+    # conn.close() - Handled by teardown_appcontext
     print("[DB] Initialized")
 
 def migrate_db():
@@ -149,4 +158,4 @@ def migrate_db():
                 pass  # Column already exists
     
     conn.commit()
-    conn.close()
+    # conn.close() - Handled by teardown_appcontext

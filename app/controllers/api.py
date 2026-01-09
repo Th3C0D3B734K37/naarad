@@ -40,7 +40,8 @@ def stats():
     cursor.execute('SELECT browser, COUNT(*) as count FROM tracks GROUP BY browser ORDER BY count DESC')
     browsers = [dict(row) for row in cursor.fetchall()]
     
-    conn.close()
+    
+    # conn.close() - Handled by teardown_appcontext
     
     return jsonify({
         'summary': {
@@ -68,7 +69,7 @@ def tracks():
     
     cursor.execute('SELECT COUNT(*) FROM tracks')
     total = cursor.fetchone()[0]
-    conn.close()
+    # conn.close() - Handled by teardown_appcontext
     
     return jsonify({'tracks': items, 'total': total})
 
@@ -83,12 +84,12 @@ def track_detail(track_id):
     track = cursor.fetchone()
     
     if not track:
-        conn.close()
+        # conn.close() - Handled by teardown_appcontext
         return jsonify({'error': 'Not found'}), 404
     
     cursor.execute('SELECT * FROM clicks WHERE track_id = ? ORDER BY timestamp DESC', (track_id,))
     clicks = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    # conn.close() - Handled by teardown_appcontext
     
     return jsonify({'track': dict(track), 'clicks': clicks})
 
@@ -102,7 +103,7 @@ def export():
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC')
     items = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    # conn.close() - Handled by teardown_appcontext
     
     if fmt == 'csv' and items:
         output = io.StringIO()

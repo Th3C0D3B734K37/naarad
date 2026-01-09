@@ -105,7 +105,8 @@ def track_open(track_id=None):
         ))
     
     conn.commit()
-    conn.close()
+    conn.commit()
+    # conn.close() - Handled by teardown_appcontext
     
     send_webhook('open', {'track_id': track_id, 'location': f"{geo['city']}, {geo['country']}"})
     
@@ -150,7 +151,8 @@ def track_click(track_id, target_url):
                    (timestamp, track_id))
     
     conn.commit()
-    conn.close()
+    conn.commit()
+    # conn.close() - Handled by teardown_appcontext
     
     send_webhook('click', {'track_id': track_id, 'url': target_url})
     
