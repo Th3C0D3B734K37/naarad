@@ -150,5 +150,67 @@ function exportData() {
     window.open('/api/export?format=csv', '_blank');
 }
 
+// Generator Tools
+async function generateTools() {
+    const idInput = document.getElementById('gen-id');
+    const urlInput = document.getElementById('gen-url');
+    const resultDiv = document.getElementById('gen-result');
+
+    let id = idInput.value.trim();
+    const url = urlInput.value.trim();
+
+    if (!id) {
+        id = 'track-' + Date.now().toString(36);
+        idInput.value = id;
+    }
+
+    const base = window.location.origin;
+
+    // 1. Pixel
+    // Note: We construct this client-side for speed, but could use /api/generate
+    const pixelUrl = `${base}/track?id=${encodeURIComponent(id)}`;
+    const pixelTag = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+    document.getElementById('res-pixel').textContent = pixelTag;
+
+    // 2. Link
+    const linkGroup = document.getElementById('res-link-group');
+    if (url) {
+        try {
+            // Use API for safe encoding
+            const res = await fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ track_id: id, url: url })
+            });
+            const data = await res.json();
+
+            if (data.click_url) {
+                document.getElementById('res-link').textContent = base + data.click_url;
+                linkGroup.style.display = 'block';
+            }
+        } catch (e) {
+            console.error(e);
+            // Fallback
+            document.getElementById('res-link').textContent = `${base}/click/${encodeURIComponent(id)}/${encodeURIComponent(url)}`;
+            linkGroup.style.display = 'block';
+        }
+    } else {
+        linkGroup.style.display = 'none';
+    }
+
+    resultDiv.style.display = 'block';
+}
+
+function copyText(el) {
+    const text = el.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const original = el.style.backgroundColor;
+        el.style.backgroundColor = 'rgba(74, 222, 128, 0.2)';
+        setTimeout(() => {
+            el.style.backgroundColor = original;
+        }, 200);
+    });
+}
+
 load();
 setInterval(load, 30000);
