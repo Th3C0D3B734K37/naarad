@@ -162,6 +162,7 @@ def init_db():
                 timestamp TEXT NOT NULL,
                 track_id TEXT NOT NULL,
                 campaign_id TEXT,
+                label TEXT,
                 
                 sender TEXT,
                 recipient TEXT,
@@ -270,6 +271,7 @@ def migrate_db():
             ('sec_ch_ua', 'TEXT'),
             ('sec_ch_ua_mobile', 'TEXT'),
             ('sec_ch_ua_platform', 'TEXT'),
+            ('label', 'TEXT'),
         ]
         
         for col_name, col_type in new_columns:
@@ -301,6 +303,7 @@ def migrate_db():
             ('sec_ch_ua', 'TEXT'),
             ('sec_ch_ua_mobile', 'TEXT'),
             ('sec_ch_ua_platform', 'TEXT'),
+            ('label', 'TEXT'),
         ]
         
         for col_name, col_type in new_columns:

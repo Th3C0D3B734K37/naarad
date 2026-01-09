@@ -20,7 +20,10 @@ async function load() {
         renderChart('devices', stats.devices);
         renderChart('browsers', stats.browsers);
 
-        const data = await (await fetch('/api/tracks?limit=20')).json();
+        const q = document.getElementById('search-q') ? document.getElementById('search-q').value : '';
+        const url = q ? `/api/tracks?q=${encodeURIComponent(q)}` : '/api/tracks?limit=50';
+
+        const data = await (await fetch(url)).json();
         window.loadedTracks = data.tracks; // Store for modal
         renderTracks(data.tracks);
     } catch (e) {
@@ -47,19 +50,33 @@ function renderChart(id, data) {
 function renderTracks(tracks) {
     const el = document.getElementById('tracks');
     if (!tracks || !tracks.length) {
-        el.innerHTML = '<tr><td colspan="6" class="empty">No events yet</td></tr>';
+        el.innerHTML = '<tr><td colspan="5" class="empty">No pixels found</td></tr>';
         return;
     }
+
     el.innerHTML = tracks.map(t => `
-        <tr onclick="openDetail('${t.track_id}')" style="cursor:pointer">
-            <td><span class="mono">${esc(t.track_id?.slice(0, 16) || '-')}</span></td>
-            <td>${esc(t.city || '-')}, ${esc(t.country || '-')}</td>
-            <td class="hide-mobile">${esc(t.sender || '-')}</td>
-            <td class="hide-mobile">${esc(t.recipient || '-')}</td>
-            <td class="hide-mobile">${esc(t.subject || '-')}</td>
-            <td class="hide-mobile"><span class="badge">${esc(t.device_type || '-')}</span></td>
-            <td>${t.open_count || 0}</td>
-            <td style="color:var(--text-muted);font-size:0.7rem">${t.last_seen ? new Date(t.last_seen).toLocaleString() : '-'}</td>
+        <tr onclick="openDetail('${t.track_id}')" style="cursor:pointer; border-bottom:1px solid #222; transition:background 0.2s">
+            <td style="padding:0.8rem">
+                <div style="font-weight:bold; color:white; font-size:0.95rem">${esc(t.label || t.track_id)}</div>
+                <div class="mono" style="font-size:0.75rem; color:#666">${esc(t.track_id)}</div>
+            </td>
+            <td style="padding:0.8rem; font-size:0.9rem; color:#ccc">
+                ${esc(t.city || '-')}, ${esc(t.country || '-')}
+            </td>
+            <td class="hide-mobile" style="padding:0.8rem; font-size:0.9rem; color:#ccc">
+                <div>${esc(t.recipient || '-')}</div>
+                <div style="font-size:0.75rem; color:#666">${esc(t.subject?.substring(0, 25) || '')}</div>
+            </td>
+            <td style="padding:0.8rem; text-align:center">
+                <span class="badge" style="background:rgba(74, 222, 128, 0.1); color:#4ade80; margin-right:4px" title="Opens">${t.open_count}</span>
+                <span class="badge" style="background:rgba(96, 165, 250, 0.1); color:#60a5fa" title="Clicks">${t.click_count || 0}</span>
+            </td>
+            <td style="padding:0.8rem; text-align:right">
+                <button class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem; background:transparent; border:1px solid #333; margin-right:4px" 
+                        onclick="event.stopPropagation(); copyLink('${t.track_id}')" title="Copy Pixel URL">🔗</button>
+                <button class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem; background:transparent; border:1px solid #333; color:#ef4444" 
+                        onclick="event.stopPropagation(); deleteTrack('${t.track_id}')" title="Delete">🗑️</button>
+            </td>
         </tr>
     `).join('');
 }
@@ -68,61 +85,45 @@ function openDetail(id) {
     const t = window.loadedTracks.find(x => x.track_id === id);
     if (!t) return;
 
-    const sections = [
-        {
-            title: "Message Context",
-            items: [
-                { label: 'Subject', value: t.subject, full: true, highlight: true },
-                { label: 'Sender', value: t.sender },
-                { label: 'Recipient', value: t.recipient },
-                { label: 'Event ID', value: t.track_id, mono: true }
-            ]
-        },
-        {
-            title: "Network & Location",
-            items: [
-                { label: 'Location', value: `${t.city || ''}, ${t.region || ''}, ${t.country || ''}` },
-                { label: 'IP Address', value: t.ip_address, mono: true },
-                { label: 'ISP', value: t.isp },
-                { label: 'Timezone', value: t.timezone }
-            ]
-        },
-        {
-            title: "Device & Client",
-            items: [
-                { label: 'Browser', value: `${t.browser} ${t.browser_version || ''}` },
-                { label: 'OS', value: `${t.os} ${t.os_version || ''}` },
-                { label: 'Device', value: `${t.device_brand || ''} ${t.device_type || ''}` },
-                { label: 'User Agent', value: t.user_agent, full: true, small: true }
-            ]
-        },
-        {
-            title: "Timestamps",
-            items: [
-                { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : '-' },
-                { label: 'Last Seen', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : '-' },
-                { label: 'Sent At', value: t.sent_at ? new Date(t.sent_at).toLocaleString() : '-' },
-                { label: 'Opens', value: t.open_count }
-            ]
-        }
-    ];
-
-    document.getElementById('modal-content').innerHTML = sections.map(section => `
-        <div class="modal-section">
-            <h4 class="section-title">${section.title}</h4>
-            <div class="detail-grid">
-                ${section.items.map(f => `
-                    <div class="detail-item ${f.full ? 'full-width' : ''}">
-                        <div class="detail-label">${f.label}</div>
-                        <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
-                            ${esc(f.value || '-')}
-                        </div>
+    document.getElementById('modal-content').innerHTML = `
+        <div style="display:grid; gap:1.5rem">
+            <div>
+                <h4 style="color:#666; font-size:0.8rem; text-transform:uppercase; margin-bottom:0.5rem">Metadata</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem">
+                    <div>
+                        <div style="font-size:0.75rem; color:#666">Label</div>
+                        <div>${esc(t.label || '-')} <button style="background:none;border:none;color:#4ade80;cursor:pointer" onclick="editLabel('${t.track_id}', '${esc(t.label || '')}')">✎</button></div>
                     </div>
-                `).join('')}
+                    <div>
+                        <div style="font-size:0.75rem; color:#666">Track ID</div>
+                        <div class="mono">${esc(t.track_id)}</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h4 style="color:#666; font-size:0.8rem; text-transform:uppercase; margin-bottom:0.5rem">Stats</h4>
+                <div style="display:flex; gap:1rem">
+                    <div style="background:#111; padding:0.8rem; border-radius:4px; flex:1; text-align:center">
+                        <div style="font-size:1.5rem; color:#4ade80; font-weight:bold">${t.open_count}</div>
+                        <div style="font-size:0.75rem; color:#666">Opens</div>
+                    </div>
+                    <div style="background:#111; padding:0.8rem; border-radius:4px; flex:1; text-align:center">
+                        <div style="font-size:1.5rem; color:#60a5fa; font-weight:bold">${t.click_count || 0}</div>
+                        <div style="font-size:0.75rem; color:#666">Clicks</div>
+                    </div>
+                </div>
+            </div>
+             <div>
+                <h4 style="color:#666; font-size:0.8rem; text-transform:uppercase; margin-bottom:0.5rem">Location & Device</h4>
+                <div class="detail-grid">
+                     <div class="detail-item"><div class="detail-label">Location</div><div class="detail-value">${esc(t.city || '-')}, ${esc(t.country || '-')}</div></div>
+                     <div class="detail-item"><div class="detail-label">IP Address</div><div class="detail-value mono">${esc(t.ip_address)}</div></div>
+                     <div class="detail-item"><div class="detail-label">Device</div><div class="detail-value">${esc(t.device_type || '-')} (${esc(t.os || '-')})</div></div>
+                     <div class="detail-item"><div class="detail-label">Browser</div><div class="detail-value">${esc(t.browser || '-')}</div></div>
+                </div>
             </div>
         </div>
-    `).join('<hr class="modal-divider">');
-
+    `;
     document.getElementById('modal').style.display = 'flex';
 }
 
@@ -135,12 +136,85 @@ document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') closeModal();
 });
 
-// Close on Escape key
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
-});
+// Modal Actions
+function openCreateModal() {
+    document.getElementById('create-modal').style.display = 'flex';
+    document.getElementById('new-id').value = '';
+    document.getElementById('new-label').value = '';
+}
+
+function closeCreateModal() {
+    document.getElementById('create-modal').style.display = 'none';
+}
+
+async function submitCreateTrack() {
+    const id = document.getElementById('new-id').value.trim();
+    const label = document.getElementById('new-label').value.trim();
+
+    try {
+        const res = await fetch('/api/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ track_id: id, label: label })
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+
+        closeCreateModal();
+        load(); // Refresh list
+
+        // Optionally show the links immediately
+        prompt("Pixel Created! Copy URL:", window.location.origin + '/track?id=' + data.track_id);
+    } catch (e) {
+        alert('Failed to create pixel');
+    }
+}
+
+async function deleteTrack(id) {
+    if (!confirm(`Are you sure you want to delete pixel "${id}"? This cannot be undone.`)) return;
+
+    try {
+        await fetch(`/api/track/${id}`, { method: 'DELETE' });
+        load();
+    } catch (e) {
+        alert('Delete failed');
+    }
+}
+
+async function editLabel(id, current) {
+    const newLabel = prompt("Enter new label:", current);
+    if (newLabel === null) return;
+
+    try {
+        await fetch(`/api/track/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: newLabel })
+        });
+        closeModal();
+        load();
+    } catch (e) {
+        alert('Update failed');
+    }
+}
+
+function copyLink(id) {
+    const url = window.location.origin + '/track?id=' + id;
+    navigator.clipboard.writeText(url).then(() => {
+        // Simple toast or feedback
+        const btn = event.target;
+        const old = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = old, 1000);
+    });
+}
 
 function esc(s) {
+    if (!s) return '';
     const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;

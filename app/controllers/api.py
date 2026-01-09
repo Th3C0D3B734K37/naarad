@@ -56,23 +56,110 @@ def stats():
         'browsers': browsers
     })
 
+from datetime import datetime, timezone
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
 @bp_api.route('/tracks')
 @require_api_key
 def tracks():
-    """List tracking events."""
+    """List tracking events with optional search."""
     limit = min(request.args.get('limit', 100, type=int), 500)
     offset = request.args.get('offset', 0, type=int)
+    q = request.args.get('q', '').strip()
     
     conn = get_db()
     cursor = get_cursor(conn)
-    cursor.execute(f'SELECT * FROM tracks ORDER BY last_seen DESC LIMIT {P} OFFSET {P}', (limit, offset))
-    items = [dict(row) if hasattr(row, 'keys') else row for row in cursor.fetchall()]
     
-    cursor.execute('SELECT COUNT(*) FROM tracks')
-    row = cursor.fetchone()
-    total = row[0] if isinstance(row, tuple) else row['count'] if 'count' in row else list(row.values())[0]
+    items = []
+    total = 0
+    
+    if q:
+        # Search mode
+        pattern = f'%{q}%'
+        cursor.execute(f'''
+            SELECT * FROM tracks 
+            WHERE track_id LIKE {P} OR label LIKE {P} OR recipient LIKE {P} OR subject LIKE {P}
+            ORDER BY last_seen DESC LIMIT {P} OFFSET {P}
+        ''', (pattern, pattern, pattern, pattern, limit, offset))
+        items = [dict(row) if hasattr(row, 'keys') else row for row in cursor.fetchall()]
+        
+        cursor.execute(f'''
+            SELECT COUNT(*) FROM tracks 
+            WHERE track_id LIKE {P} OR label LIKE {P} OR recipient LIKE {P} OR subject LIKE {P}
+        ''', (pattern, pattern, pattern, pattern))
+        row = cursor.fetchone()
+        
+    else:
+        cursor.execute(f'SELECT * FROM tracks ORDER BY last_seen DESC LIMIT {P} OFFSET {P}', (limit, offset))
+        items = [dict(row) if hasattr(row, 'keys') else row for row in cursor.fetchall()]
+        
+        cursor.execute('SELECT COUNT(*) FROM tracks')
+        row = cursor.fetchone()
+        
+    total = row[0] if row and (isinstance(row, tuple) or not hasattr(row, 'keys')) else row['count'] if row else 0
+    if hasattr(row, 'values'): total = list(row.values())[0] # Fallback for dict without 'count' key if specific driver behavior differs
     
     return jsonify({'tracks': items, 'total': total})
+
+@bp_api.route('/track', methods=['POST'])
+@require_api_key
+def create_track():
+    """Create a new tracking pixel."""
+    data = request.json or {}
+    track_id = sanitize_id(data.get('track_id', ''))
+    label = data.get('label', '')
+    
+    if not track_id:
+        import uuid
+        track_id = f"track-{uuid.uuid4().hex[:8]}"
+        
+    conn = get_db()
+    cursor = get_cursor(conn)
+    
+    # Check existence
+    cursor.execute(f'SELECT id FROM tracks WHERE track_id = {P}', (track_id,))
+    if cursor.fetchone():
+        return jsonify({'error': 'Track ID exists'}), 400
+        
+    timestamp = now_iso()
+    placeholders = ', '.join([P] * 6)
+    cursor.execute(f'''
+        INSERT INTO tracks (timestamp, track_id, label, first_seen, last_seen, open_count)
+        VALUES ({placeholders})
+    ''', (timestamp, track_id, label, timestamp, timestamp, 0))
+    
+    conn.commit()
+    return jsonify({'track_id': track_id, 'label': label})
+
+@bp_api.route('/track/<track_id>', methods=['PUT'])
+@require_api_key
+def update_track(track_id):
+    """Update track metadata (label)."""
+    data = request.json or {}
+    label = data.get('label', '')
+    
+    conn = get_db()
+    cursor = get_cursor(conn)
+    
+    cursor.execute(f'UPDATE tracks SET label = {P} WHERE track_id = {P}', (label, track_id))
+    conn.commit()
+    
+    return jsonify({'success': True})
+
+@bp_api.route('/track/<track_id>', methods=['DELETE'])
+@require_api_key
+def delete_track(track_id):
+    """Delete a track and its history."""
+    conn = get_db()
+    cursor = get_cursor(conn)
+    
+    cursor.execute(f'DELETE FROM tracks WHERE track_id = {P}', (track_id,))
+    cursor.execute(f'DELETE FROM clicks WHERE track_id = {P}', (track_id,))
+    conn.commit()
+    
+    return jsonify({'success': True})
 
 @bp_api.route('/track/<track_id>')
 @require_api_key

@@ -40,51 +40,39 @@
                 </div>
             </div>
 
-            <!-- Link Generator -->
+            <!-- Search & Actions Bar (Mobile Friendly) -->
             <div class="card" style="margin-bottom: 2rem;">
-                <div class="card-header">Tracking Link Generator</div>
-                <div style="padding: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
-                    <div style="flex: 1; min-width: 200px;">
-                        <label style="display:block; margin-bottom:0.5rem; font-size:0.9rem; color:var(--text-muted)">Recipient / Track ID</label>
-                        <input type="text" id="gen-id" placeholder="e.g. client-gmail-01" class="input" style="width:100%; padding:0.6rem; border:1px solid #333; background:#111; color:#fff; border-radius:4px;">
+                <div class="card-body"
+                    style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; padding:1rem;">
+                    <div style="flex:1; min-width:200px; display:flex; gap:0.5rem;">
+                        <input type="text" id="search-q" placeholder="Search ID, Label, Recipient..." class="input"
+                            style="width:100%; padding:0.6rem; background:#111; border:1px solid #333; color:white; border-radius:4px;"
+                            onkeyup="if(event.key==='Enter') load()">
+                        <button class="btn" onclick="load()">🔍</button>
                     </div>
-                    <div style="flex: 1; min-width: 200px;">
-                        <label style="display:block; margin-bottom:0.5rem; font-size:0.9rem; color:var(--text-muted)">Target URL (for clicks)</label>
-                        <input type="text" id="gen-url" placeholder="https://..." class="input" style="width:100%; padding:0.6rem; border:1px solid #333; background:#111; color:#fff; border-radius:4px;">
-                    </div>
-                    <button class="btn btn-primary" onclick="generateTools()">Generate Tools</button>
-                </div>
-                
-                <div id="gen-result" style="display:none; border-top:1px solid #333; padding: 1.5rem;">
-                    <div style="margin-bottom: 1.5rem;">
-                        <label style="display:block; margin-bottom:0.5rem; font-size:0.9rem; color:var(--text-muted)">1. Spy Pixel (Internal Tracking)</label>
-                        <p style="font-size:0.8rem; margin-bottom:0.5rem; opacity:0.7">Paste this at the very bottom of your email source/HTML.</p>
-                        <div class="code" id="res-pixel" style="cursor:pointer" onclick="copyText(this)" title="Click to copy"></div>
-                    </div>
-                    
-                    <div id="res-link-group" style="display:none;">
-                        <label style="display:block; margin-bottom:0.5rem; font-size:0.9rem; color:var(--text-muted)">2. Trackable Link (Redirect)</label>
-                        <p style="font-size:0.8rem; margin-bottom:0.5rem; opacity:0.7">Use this link instead of your original URL.</p>
-                        <div class="code" id="res-link" style="cursor:pointer" onclick="copyText(this)" title="Click to copy"></div>
-                    </div>
+                    <button class="btn btn-primary" onclick="openCreateModal()">+ Create New Pixel</button>
                 </div>
             </div>
 
             <div class="grid">
-                <div class="card">
-                    <div class="card-header">Recent Events</div>
+                <!-- Main Content: Tracks List -->
+                <div class="card" style="grid-column: span 2;"> <!-- Make list wider -->
+                    <div class="card-header">Pixel Manager</div>
                     <div class="table-wrap">
-                        <table>
+                        <table style="width:100%; border-collapse: collapse;">
                             <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>Location</th>
-                                    <th class="hide-mobile">Sender</th>
-                                    <th class="hide-mobile">Recipient</th>
-                                    <th class="hide-mobile">Subject</th>
-                                    <th class="hide-mobile">Device</th>
-                                    <th>Opens</th>
-                                    <th>Last Seen</th>
+                                    <th style="text-align:left; padding:0.8rem; border-bottom:1px solid #333">ID / Label
+                                    </th>
+                                    <th style="text-align:left; padding:0.8rem; border-bottom:1px solid #333">Location
+                                    </th>
+                                    <th class="hide-mobile"
+                                        style="text-align:left; padding:0.8rem; border-bottom:1px solid #333">Recipient
+                                    </th>
+                                    <th style="text-align:center; padding:0.8rem; border-bottom:1px solid #333">Stats
+                                    </th>
+                                    <th style="text-align:right; padding:0.8rem; border-bottom:1px solid #333">Actions
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody id="tracks"></tbody>
@@ -92,6 +80,7 @@
                     </div>
                 </div>
 
+                <!-- Sidebar: Stats -->
                 <div class="sidebar">
                     <div class="card">
                         <div class="card-header">Countries</div>
