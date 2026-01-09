@@ -8,6 +8,23 @@ if (statusEl) {
     statusEl.innerHTML = `<span class="live-dot" style="background:${isLocal ? '#facc15' : '#4ade80'}"></span> ${isLocal ? 'Localhost' : 'Live'}`;
 }
 
+// Search Interaction
+function toggleSearch() {
+    const wrap = document.querySelector('.search-wrap');
+    const input = document.getElementById('search-q');
+    wrap.classList.toggle('active');
+    if (wrap.classList.contains('active')) {
+        setTimeout(() => input.focus(), 300);
+    }
+}
+// Close search if clicked outside
+document.addEventListener('click', (e) => {
+    const wrap = document.querySelector('.search-wrap');
+    if (wrap && !wrap.contains(e.target) && wrap.classList.contains('active') && !document.getElementById('search-q').value) {
+        wrap.classList.remove('active');
+    }
+});
+
 async function load() {
     try {
         const stats = await (await fetch('/api/stats')).json();
@@ -50,80 +67,125 @@ function renderChart(id, data) {
 function renderTracks(tracks) {
     const el = document.getElementById('tracks');
     if (!tracks || !tracks.length) {
-        el.innerHTML = '<tr><td colspan="5" class="empty">No pixels found</td></tr>';
+        el.innerHTML = '<tr><td colspan="9" class="empty">No pixels found</td></tr>';
         return;
     }
 
     el.innerHTML = tracks.map(t => `
-        <tr onclick="openDetail('${t.track_id}')" style="cursor:pointer; border-bottom:1px solid #222; transition:background 0.2s">
+        <tr onclick="openDetail('${t.track_id}')" style="cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.2s">
             <td style="padding:0.8rem">
-                <div style="font-weight:bold; color:white; font-size:0.95rem">${esc(t.label || t.track_id)}</div>
-                <div class="mono" style="font-size:0.75rem; color:#666">${esc(t.track_id)}</div>
+                <div style="font-weight:bold; color:white; font-size:0.9rem">${esc(t.label || t.track_id)}</div>
+                <div class="mono" style="font-size:0.75rem; color:#555">${esc(t.track_id)}</div>
             </td>
-            <td style="padding:0.8rem; font-size:0.9rem; color:#ccc">
-                ${esc(t.city || '-')}, ${esc(t.country || '-')}
+            <td style="padding:0.8rem; font-size:0.85rem; color:#aaa">
+                ${t.flag ? t.flag + ' ' : ''}${esc(t.city || '-')}, ${esc(t.country_code || t.country || '-')}
             </td>
-            <td class="hide-mobile" style="padding:0.8rem; font-size:0.9rem; color:#ccc">
-                <div>${esc(t.recipient || '-')}</div>
-                <div style="font-size:0.75rem; color:#666">${esc(t.subject?.substring(0, 25) || '')}</div>
+            <td class="hide-mobile" style="padding:0.8rem; font-size:0.85rem; color:#aaa">${esc(t.sender || '-')}</td>
+            <td class="hide-mobile" style="padding:0.8rem; font-size:0.85rem; color:#aaa">${esc(t.recipient || '-')}</td>
+            <td class="hide-mobile" style="padding:0.8rem; font-size:0.85rem; color:#888">${esc(t.subject?.substring(0, 30) || '')}</td>
+             <td class="hide-mobile" style="padding:0.8rem;">
+                <span class="badge" style="background:#222; border:1px solid #333; color:#aaa; font-size:0.7rem">
+                    ${esc(t.device_type || 'Unknown')}
+                </span>
             </td>
-            <td style="padding:0.8rem; text-align:center">
-                <span class="badge" style="background:rgba(74, 222, 128, 0.1); color:#4ade80; margin-right:4px" title="Opens">${t.open_count}</span>
-                <span class="badge" style="background:rgba(96, 165, 250, 0.1); color:#60a5fa" title="Clicks">${t.click_count || 0}</span>
+            <td class="hide-mobile" style="padding:0.8rem; text-align:center">
+                <div style="display:flex; gap:0.5rem; justify-content:center">
+                    <span class="badge" style="background:rgba(74, 222, 128, 0.1); color:#4ade80; border:none">${t.open_count}</span>
+                    <span class="badge" style="background:rgba(59, 130, 246, 0.1); color:#60a5fa; border:none">${t.click_count || 0}</span>
+                </div>
+            </td>
+            <td style="padding:0.8rem; font-size:0.8rem; color:#666">
+                ${t.last_seen ? timeAgo(new Date(t.last_seen)) : '-'}
             </td>
             <td style="padding:0.8rem; text-align:right">
-                <button class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem; background:transparent; border:1px solid #333; margin-right:4px" 
-                        onclick="event.stopPropagation(); copyLink('${t.track_id}')" title="Copy Pixel URL">🔗</button>
-                <button class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem; background:transparent; border:1px solid #333; color:#ef4444" 
-                        onclick="event.stopPropagation(); deleteTrack('${t.track_id}')" title="Delete">🗑️</button>
+                <button class="btn-icon" style="padding:0.4rem; color:inherit" onclick="event.stopPropagation(); deleteTrack('${t.track_id}')" title="Delete">
+                    <svg class="icon" style="width:16px;height:16px" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                </button>
             </td>
         </tr>
     `).join('');
+}
+
+function timeAgo(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + "y";
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + "mo";
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + "d";
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + "h";
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + "m";
+    return "just now";
 }
 
 function openDetail(id) {
     const t = window.loadedTracks.find(x => x.track_id === id);
     if (!t) return;
 
-    document.getElementById('modal-content').innerHTML = `
-        <div style="display:grid; gap:1.5rem">
-            <div>
-                <h4 style="color:#666; font-size:0.8rem; text-transform:uppercase; margin-bottom:0.5rem">Metadata</h4>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem">
-                    <div>
-                        <div style="font-size:0.75rem; color:#666">Label</div>
-                        <div>${esc(t.label || '-')} <button style="background:none;border:none;color:#4ade80;cursor:pointer" onclick="editLabel('${t.track_id}', '${esc(t.label || '')}')">✎</button></div>
+    // ... Detail modal content: Keep existing or simplified? 
+    // I'll keep the full detail view logic from before but refined
+
+    const sections = [
+        {
+            title: "Identity & Context",
+            items: [
+                { label: 'Label', value: t.label || '-', highlight: true },
+                { label: 'Event ID', value: t.track_id, mono: true },
+                { label: 'Recipient', value: t.recipient },
+                { label: 'Subject', value: t.subject, full: true }
+            ]
+        },
+        {
+            title: "Location & Network",
+            items: [
+                { label: 'Generic', value: `${t.city || ''}, ${t.country || ''}` },
+                { label: 'IP Address', value: t.ip_address, mono: true },
+                { label: 'ISP / Org', value: t.isp || t.org },
+                { label: 'Timezone', value: t.timezone }
+            ]
+        },
+        {
+            title: "Device Fingerprint",
+            items: [
+                { label: 'Browser', value: `${t.browser} ${t.browser_version || ''}` },
+                { label: 'Platform', value: `${t.os} ${t.os_version || ''}` },
+                { label: 'Device', value: `${t.device_brand || ''} ${t.device_type || ''}` },
+                { label: 'User Agent', value: t.user_agent, full: true, small: true, mono: true }
+            ]
+        },
+        {
+            title: "Timeline",
+            items: [
+                { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : '-' },
+                { label: 'Last Activity', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : '-' },
+                { label: 'Total Opens', value: t.open_count },
+                { label: 'Total Clicks', value: t.click_count || 0 }
+            ]
+        }
+    ];
+
+    document.getElementById('modal-content').innerHTML = sections.map(section => `
+        <div class="modal-section">
+            <h4 class="section-title">${section.title}</h4>
+            <div class="detail-grid">
+                ${section.items.map(f => `
+                    <div class="detail-item ${f.full ? 'full-width' : ''}">
+                        <div class="detail-label">${f.label}</div>
+                        <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
+                            ${esc(f.value || '-')}
+                        </div>
                     </div>
-                    <div>
-                        <div style="font-size:0.75rem; color:#666">Track ID</div>
-                        <div class="mono">${esc(t.track_id)}</div>
-                    </div>
-                </div>
-            </div>
-            <div>
-                <h4 style="color:#666; font-size:0.8rem; text-transform:uppercase; margin-bottom:0.5rem">Stats</h4>
-                <div style="display:flex; gap:1rem">
-                    <div style="background:#111; padding:0.8rem; border-radius:4px; flex:1; text-align:center">
-                        <div style="font-size:1.5rem; color:#4ade80; font-weight:bold">${t.open_count}</div>
-                        <div style="font-size:0.75rem; color:#666">Opens</div>
-                    </div>
-                    <div style="background:#111; padding:0.8rem; border-radius:4px; flex:1; text-align:center">
-                        <div style="font-size:1.5rem; color:#60a5fa; font-weight:bold">${t.click_count || 0}</div>
-                        <div style="font-size:0.75rem; color:#666">Clicks</div>
-                    </div>
-                </div>
-            </div>
-             <div>
-                <h4 style="color:#666; font-size:0.8rem; text-transform:uppercase; margin-bottom:0.5rem">Location & Device</h4>
-                <div class="detail-grid">
-                     <div class="detail-item"><div class="detail-label">Location</div><div class="detail-value">${esc(t.city || '-')}, ${esc(t.country || '-')}</div></div>
-                     <div class="detail-item"><div class="detail-label">IP Address</div><div class="detail-value mono">${esc(t.ip_address)}</div></div>
-                     <div class="detail-item"><div class="detail-label">Device</div><div class="detail-value">${esc(t.device_type || '-')} (${esc(t.os || '-')})</div></div>
-                     <div class="detail-item"><div class="detail-label">Browser</div><div class="detail-value">${esc(t.browser || '-')}</div></div>
-                </div>
+                `).join('')}
             </div>
         </div>
-    `;
+    `).join('<hr class="modal-divider">') +
+        `<div style="margin-top:1.5rem; text-align:right">
+        <button class="btn" style="border:1px solid #333; color:#ef4444" onclick="deleteTrack('${t.track_id}'); closeModal()">Delete Pixel</button>
+     </div>`;
+
     document.getElementById('modal').style.display = 'flex';
 }
 
@@ -137,10 +199,24 @@ document.getElementById('modal').addEventListener('click', (e) => {
 });
 
 // Modal Actions
+function generateRandomId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 8; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+    document.getElementById('new-id').value = 'client-' + result;
+}
+
 function openCreateModal() {
+    resetCreateModal();
+    generateRandomId();
     document.getElementById('create-modal').style.display = 'flex';
-    document.getElementById('new-id').value = '';
+}
+
+function resetCreateModal() {
+    document.getElementById('create-step-1').style.display = 'block';
+    document.getElementById('create-step-2').style.display = 'none';
     document.getElementById('new-label').value = '';
+    generateRandomId();
 }
 
 function closeCreateModal() {
@@ -150,6 +226,8 @@ function closeCreateModal() {
 async function submitCreateTrack() {
     const id = document.getElementById('new-id').value.trim();
     const label = document.getElementById('new-label').value.trim();
+
+    if (!id) return alert("ID is required");
 
     try {
         const res = await fetch('/api/track', {
@@ -164,18 +242,25 @@ async function submitCreateTrack() {
             return;
         }
 
-        closeCreateModal();
-        load(); // Refresh list
+        // Show success step
+        document.getElementById('create-step-1').style.display = 'none';
+        document.getElementById('create-step-2').style.display = 'block';
 
-        // Optionally show the links immediately
-        prompt("Pixel Created! Copy URL:", window.location.origin + '/track?id=' + data.track_id);
+        const origin = window.location.origin;
+        document.getElementById('res-pixel-code').textContent =
+            `<img src="${origin}/track?id=${data.track_id}" width="1" height="1" style="display:none" />`;
+
+        document.getElementById('res-link-code').textContent =
+            `${origin}/track?id=${data.track_id}&r=https://example.com`;
+
+        load();
     } catch (e) {
         alert('Failed to create pixel');
     }
 }
 
 async function deleteTrack(id) {
-    if (!confirm(`Are you sure you want to delete pixel "${id}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete pixel "${id}"? This history cannot be recovered.`)) return;
 
     try {
         await fetch(`/api/track/${id}`, { method: 'DELETE' });
@@ -210,6 +295,15 @@ function copyLink(id) {
         const old = btn.textContent;
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = old, 1000);
+    });
+}
+
+function copyText(el) {
+    const text = el.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const old = el.style.borderColor;
+        el.style.borderColor = '#4ade80';
+        setTimeout(() => el.style.borderColor = '#333', 500);
     });
 }
 

@@ -6,6 +6,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Naarad (नारद)</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .search-wrap {
+            display: flex;
+            align-items: center;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 20px;
+            padding: 0.2rem;
+            transition: all 0.3s ease;
+            width: 40px;
+            overflow: hidden;
+        }
+
+        .search-wrap.active {
+            width: 250px;
+            background: #000;
+            border-color: #555;
+        }
+
+        .search-wrap input {
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 0 0.5rem;
+            width: 100%;
+            outline: none;
+            opacity: 0;
+            transition: opacity 0.2s 0.1s;
+        }
+
+        .search-wrap.active input {
+            opacity: 1;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: none;
+            color: #888;
+            padding: 0.5rem;
+            cursor: pointer;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-icon:hover {
+            background: #222;
+            color: white;
+        }
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+    </style>
 </head>
 
 <body>
@@ -40,70 +97,79 @@
                 </div>
             </div>
 
-            <!-- Search & Actions Bar (Mobile Friendly) -->
-            <div class="card" style="margin-bottom: 2rem;">
-                <div class="card-body"
-                    style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; padding:1rem;">
-                    <div style="flex:1; min-width:200px; display:flex; gap:0.5rem;">
-                        <input type="text" id="search-q" placeholder="Search ID, Label, Recipient..." class="input"
-                            style="width:100%; padding:0.6rem; background:#111; border:1px solid #333; color:white; border-radius:4px;"
+            <!-- Header with Expandable Search -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <div style="display:flex; gap:1rem; align-items:center">
+                    <!-- Search -->
+                    <div class="search-wrap" id="search-wrap">
+                        <button class="btn-icon" onclick="toggleSearch()" title="Search Pixels">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <path
+                                    d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 3 16 5.91 16 9.5 16 16 11.11 16 9.5 15.41l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+                            </svg>
+                        </button>
+                        <input type="text" id="search-q" placeholder="Search..."
                             onkeyup="if(event.key==='Enter') load()">
-                        <button class="btn" onclick="load()">🔍</button>
                     </div>
-                    <button class="btn btn-primary" onclick="openCreateModal()">+ Create New Pixel</button>
-                </div>
-            </div>
 
-            <div class="grid">
-                <!-- Main Content: Tracks List -->
-                <div class="card" style="grid-column: span 2;"> <!-- Make list wider -->
-                    <div class="card-header">Pixel Manager</div>
-                    <div class="table-wrap">
-                        <table style="width:100%; border-collapse: collapse;">
-                            <thead>
-                                <tr>
-                                    <th style="text-align:left; padding:0.8rem; border-bottom:1px solid #333">ID / Label
-                                    </th>
-                                    <th style="text-align:left; padding:0.8rem; border-bottom:1px solid #333">Location
-                                    </th>
-                                    <th class="hide-mobile"
-                                        style="text-align:left; padding:0.8rem; border-bottom:1px solid #333">Recipient
-                                    </th>
-                                    <th style="text-align:center; padding:0.8rem; border-bottom:1px solid #333">Stats
-                                    </th>
-                                    <th style="text-align:right; padding:0.8rem; border-bottom:1px solid #333">Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody id="tracks"></tbody>
-                        </table>
+                    <div class="actions">
+                        <button class="btn btn-primary" onclick="openCreateModal()">+ Create</button>
+                        <button class="btn" onclick="location.reload()">Refresh</button>
                     </div>
                 </div>
 
-                <!-- Sidebar: Stats -->
-                <div class="sidebar">
-                    <div class="card">
-                        <div class="card-header">Countries</div>
-                        <div class="card-body" id="countries"></div>
+                <div class="grid">
+                    <!-- Main Content: Tracks List -->
+                    <div class="card" style="grid-column: span 2; overflow: hidden;">
+                        <div class="card-header">
+                            <span>Pixel Manager</span>
+                            <span style="font-size:0.8rem; opacity:0.6; font-weight:normal; margin-left:1rem">Full
+                                History</span>
+                        </div>
+                        <div class="table-wrap">
+                            <table style="width:100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                        <th style="padding:1rem">ID / Label</th>
+                                        <th>Location</th>
+                                        <th class="hide-mobile">Sender</th>
+                                        <th class="hide-mobile">Recipient</th>
+                                        <th class="hide-mobile">Subject</th>
+                                        <th class="hide-mobile">Device</th>
+                                        <th class="hide-mobile">Stats</th>
+                                        <th>Last Seen</th>
+                                        <th></th> <!-- Actions -->
+                                    </tr>
+                                </thead>
+                                <tbody id="tracks"></tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="card">
-                        <div class="card-header">Devices</div>
-                        <div class="card-body" id="devices"></div>
-                    </div>
-                    <div class="card">
-                        <div class="card-header">Browsers</div>
-                        <div class="card-body" id="browsers"></div>
+
+                    <!-- Sidebar: Stats -->
+                    <div class="sidebar">
+                        <div class="card">
+                            <div class="card-header">Countries</div>
+                            <div class="card-body" id="countries"></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">Devices</div>
+                            <div class="card-body" id="devices"></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">Browsers</div>
+                            <div class="card-body" id="browsers"></div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="usage">
-                <h3>Tracking Pixel</h3>
-                <p style="color: var(--text-muted); font-size: 0.8rem;">Embed in HTML emails:</p>
-                <div class="code">&lt;img src="<span class="hl" id="pixel-url">/track?id=recipient</span>" width="1"
-                    height="1" /&gt;</div>
+                <div class="usage">
+                    <h3>Tracking Pixel</h3>
+                    <p style="color: var(--text-muted); font-size: 0.8rem;">Embed in HTML emails:</p>
+                    <div class="code">&lt;img src="<span class="hl" id="pixel-url">/track?id=recipient</span>" width="1"
+                        height="1" /&gt;</div>
+                </div>
             </div>
-        </div>
     </main>
 
     <footer>
@@ -136,6 +202,66 @@
             </div>
             <div class="modal-body" id="modal-content">
                 <!-- Content injected by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal with Two Steps -->
+    <div id="create-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="create-modal-title">Create New Pixel</h3>
+                <button class="btn-close" onclick="closeCreateModal()">×</button>
+            </div>
+
+            <!-- Step 1: Input -->
+            <div class="modal-body" id="create-step-1">
+                <div style="margin-bottom:1.5rem">
+                    <label style="display:block;margin-bottom:0.5rem; color:#aaa; font-size:0.9rem">Track ID</label>
+                    <div style="display:flex; gap:0.5rem">
+                        <input type="text" id="new-id" class="input"
+                            style="flex:1; padding:0.8rem; background:#111; border:1px solid #333; color:white; font-family:monospace">
+                        <button class="btn" style="border:1px solid #333" onclick="generateRandomId()"
+                            title="Regenerate">↻</button>
+                    </div>
+                    <p style="font-size:0.8rem;color:var(--text-muted); margin-top:0.3rem">You can edit this ID or keep
+                        the random one.</p>
+                </div>
+                <div style="margin-bottom:1.5rem">
+                    <label style="display:block;margin-bottom:0.5rem; color:#aaa; font-size:0.9rem">Label
+                        (Optional)</label>
+                    <input type="text" id="new-label" placeholder="e.g. Q1 Marketing Campaign" class="input"
+                        style="width:100%;padding:0.8rem;background:#111;border:1px solid #333;color:white">
+                </div>
+                <button class="btn btn-primary" style="width:100%; padding:0.8rem" onclick="submitCreateTrack()">Create
+                    & Get Pixel</button>
+            </div>
+
+            <!-- Step 2: Result -->
+            <div class="modal-body" id="create-step-2" style="display:none">
+                <div style="text-align:center; margin-bottom:1.5rem">
+                    <div style="color:#4ade80; font-size:3rem; margin-bottom:0.5rem">✓</div>
+                    <h3>Pixel Created</h3>
+                </div>
+
+                <div style="margin-bottom:1.5rem">
+                    <label style="display:block;margin-bottom:0.5rem; color:#aaa; font-size:0.8rem">TRACKING PIXEL (For
+                        Email)</label>
+                    <div class="code-box" onclick="copyText(this)" id="res-pixel-code"
+                        style="background:#000; padding:1rem; border:1px solid #333; font-family:monospace; font-size:0.8rem; color:#ddd; cursor:pointer; word-break:break-all">
+                    </div>
+                </div>
+
+                <div style="margin-bottom:1.5rem">
+                    <label style="display:block;margin-bottom:0.5rem; color:#aaa; font-size:0.8rem">REDIRECT LINK (For
+                        Clicks)</label>
+                    <div class="code-box" onclick="copyText(this)" id="res-link-code"
+                        style="background:#000; padding:1rem; border:1px solid #333; font-family:monospace; font-size:0.8rem; color:#4ade80; cursor:pointer; word-break:break-all">
+                    </div>
+                </div>
+
+                <button class="btn" style="width:100%; border:1px solid #333" onclick="resetCreateModal()">Create
+                    Another</button>
             </div>
         </div>
     </div>
