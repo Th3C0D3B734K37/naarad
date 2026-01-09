@@ -7,10 +7,12 @@ from app import create_app
 from app.config import Config
 from app.database import init_db, migrate_db
 
+# Initialize DB and App for Production (Gunicorn)
+init_db()
+migrate_db()
+app = create_app()
+
 def main():
-    init_db()
-    migrate_db()  # Upgrade existing databases with new columns
-    
     print()
     print("=" * 50)
     print("  NAARAD (नारद) - Email Tracker")
@@ -26,7 +28,6 @@ def main():
     print("=" * 50)
     print()
     
-    app = create_app()
     app.run(host=Config.HOST, port=Config.PORT, debug=Config.DEBUG)
 
 if __name__ == '__main__':
