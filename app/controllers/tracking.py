@@ -144,8 +144,26 @@ def track_click(track_id, target_url):
     ''', (timestamp, track_id, campaign_id, link_id, target_url, ip, geo['country'],
           geo['city'], ua, ua_info['browser'], ua_info['os'], ua_info['device_type'], referer))
     
-    cursor.execute(f'UPDATE tracks SET click_count = click_count + 1, last_seen = {P} WHERE track_id = {P}',
-                   (timestamp, track_id))
+    # Ensure track exists (e.g. if user clicked link but blocked pixel, or SMS link)
+    cursor.execute(f'SELECT id FROM tracks WHERE track_id = {P}', (track_id,))
+    if not cursor.fetchone():
+         placeholders = ', '.join([P] * 18) # Minimal fields
+         cursor.execute(f'''
+            INSERT INTO tracks (
+                timestamp, track_id, campaign_id, 
+                ip_address, country, region, city, latitude, longitude,
+                user_agent, browser, os, device_type, first_seen, last_seen,
+                click_count, open_count, referer
+            ) VALUES ({placeholders})
+         ''', (
+             timestamp, track_id, campaign_id,
+             ip, geo['country'], geo['region'], geo['city'], geo['lat'], geo['lon'],
+             ua, ua_info['browser'], ua_info['os'], ua_info['device_type'], timestamp, timestamp,
+             1, 0, referer
+         ))
+    else:
+        cursor.execute(f'UPDATE tracks SET click_count = click_count + 1, last_seen = {P} WHERE track_id = {P}',
+                       (timestamp, track_id))
     
     conn.commit()
     
