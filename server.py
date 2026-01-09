@@ -3,14 +3,21 @@
 Naarad Server
 Simple, open-source email tracking for personal use.
 """
+import sys
 from app import create_app
 from app.config import Config
 from app.database import init_db, migrate_db
 
 # Initialize DB and App for Production (Gunicorn)
-# init_db and migrate_db use direct connections, no Flask context needed
-init_db()
-migrate_db()
+print(f"[SERVER] Starting... DATABASE_URL set: {bool(Config.DATABASE_URL)}", flush=True)
+try:
+    init_db()
+    migrate_db()
+    print("[SERVER] Database ready", flush=True)
+except Exception as e:
+    print(f"[SERVER] Database init error: {e}", flush=True)
+    sys.exit(1)
+
 app = create_app()
 
 def main():
