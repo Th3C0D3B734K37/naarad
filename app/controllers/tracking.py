@@ -1,6 +1,6 @@
 
 from flask import Blueprint, request, Response, redirect
-from ..database import get_db
+from ..database import get_db, get_cursor, placeholder
 from ..services.geo import get_geo_info, now_iso
 from ..services.ua import parse_user_agent
 from ..utils import sanitize_id, hash_url, send_webhook
@@ -14,6 +14,9 @@ PIXEL = (
     b'\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01'
     b'\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
 )
+
+# SQL placeholder for current database
+P = placeholder()
 
 def get_client_ip():
     """Get real client IP from headers (supports proxies/CDNs)."""
@@ -33,7 +36,6 @@ def extract_headers():
         'connection_type': request.headers.get('Connection', ''),
         'do_not_track': request.headers.get('DNT', ''),
         'cache_control': request.headers.get('Cache-Control', ''),
-        # Client Hints (Modern browsers send these)
         'sec_ch_ua': request.headers.get('Sec-CH-UA', ''),
         'sec_ch_ua_mobile': request.headers.get('Sec-CH-UA-Mobile', ''),
         'sec_ch_ua_platform': request.headers.get('Sec-CH-UA-Platform', ''),
@@ -48,7 +50,6 @@ def favicon():
 @bp_track.route('/t/<track_id>')
 def track_open(track_id=None):
     """Track email open with maximum data capture."""
-    # Query parameters
     track_id = sanitize_id(track_id or request.args.get('id', 'unknown'))
     campaign_id = request.args.get('c') or request.args.get('campaign')
     sender = request.args.get('sender') or request.args.get('from')
@@ -56,30 +57,27 @@ def track_open(track_id=None):
     subject = request.args.get('subject')
     sent_at = request.args.get('sent_at')
     
-    # Network info
     ip = get_client_ip()
     geo = get_geo_info(ip)
     
-    # User Agent parsing
     ua = request.headers.get('User-Agent', '')
     ua_info = parse_user_agent(ua)
     
-    # All headers
     headers = extract_headers()
-    
     timestamp = now_iso()
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
-    cursor.execute('SELECT id FROM tracks WHERE track_id = ?', (track_id,))
+    cursor.execute(f'SELECT id FROM tracks WHERE track_id = {P}', (track_id,))
     existing = cursor.fetchone()
     
     if existing:
-        cursor.execute('UPDATE tracks SET open_count = open_count + 1, last_seen = ? WHERE track_id = ?',
+        cursor.execute(f'UPDATE tracks SET open_count = open_count + 1, last_seen = {P} WHERE track_id = {P}',
                        (timestamp, track_id))
     else:
-        cursor.execute('''
+        placeholders = ', '.join([P] * 38)
+        cursor.execute(f'''
             INSERT INTO tracks (
                 timestamp, track_id, campaign_id, sender, recipient, subject, sent_at,
                 ip_address, country, region, city, latitude, longitude, timezone, isp, org, asn,
@@ -89,7 +87,7 @@ def track_open(track_id=None):
                 connection_type, do_not_track, cache_control,
                 sec_ch_ua, sec_ch_ua_mobile, sec_ch_ua_platform,
                 first_seen, last_seen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES ({placeholders})
         ''', (
             timestamp, track_id, campaign_id, sender, recipient, subject, sent_at,
             ip, geo['country'], geo['region'], geo['city'], geo['lat'], geo['lon'],
@@ -105,8 +103,6 @@ def track_open(track_id=None):
         ))
     
     conn.commit()
-    conn.commit()
-    # conn.close() - Handled by teardown_appcontext
     
     send_webhook('open', {'track_id': track_id, 'location': f"{geo['city']}, {geo['country']}"})
     
@@ -114,7 +110,7 @@ def track_open(track_id=None):
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'Accept-CH': 'Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform'  # Request client hints
+        'Accept-CH': 'Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform'
     })
 
 @bp_track.route('/click/<track_id>/<path:target_url>')
@@ -138,21 +134,20 @@ def track_click(track_id, target_url):
     timestamp = now_iso()
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
-    cursor.execute('''
+    placeholders = ', '.join([P] * 13)
+    cursor.execute(f'''
         INSERT INTO clicks (timestamp, track_id, campaign_id, link_id, target_url,
                             ip_address, country, city, user_agent, browser, os, device_type, referer)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES ({placeholders})
     ''', (timestamp, track_id, campaign_id, link_id, target_url, ip, geo['country'],
           geo['city'], ua, ua_info['browser'], ua_info['os'], ua_info['device_type'], referer))
     
-    cursor.execute('UPDATE tracks SET click_count = click_count + 1, last_seen = ? WHERE track_id = ?',
+    cursor.execute(f'UPDATE tracks SET click_count = click_count + 1, last_seen = {P} WHERE track_id = {P}',
                    (timestamp, track_id))
     
     conn.commit()
-    conn.commit()
-    # conn.close() - Handled by teardown_appcontext
     
     send_webhook('click', {'track_id': track_id, 'url': target_url})
     

@@ -3,11 +3,14 @@ import io
 import csv
 from functools import wraps
 from flask import Blueprint, request, jsonify, Response
-from ..database import get_db
+from ..database import get_db, get_cursor, placeholder
 from ..config import Config
 from ..utils import sanitize_id
 
 bp_api = Blueprint('api', __name__, url_prefix='/api')
+
+# SQL placeholder for current database
+P = placeholder()
 
 def require_api_key(f):
     """Require API key for protected endpoints."""
@@ -26,22 +29,20 @@ def require_api_key(f):
 def stats():
     """Get aggregate statistics."""
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     cursor.execute('SELECT COUNT(*) as total, SUM(open_count) as opens, SUM(click_count) as clicks FROM tracks')
-    basic = dict(cursor.fetchone())
+    row = cursor.fetchone()
+    basic = dict(row) if hasattr(row, 'keys') else {'total': row[0], 'opens': row[1], 'clicks': row[2]}
     
     cursor.execute('SELECT country, COUNT(*) as count FROM tracks GROUP BY country ORDER BY count DESC LIMIT 10')
-    countries = [dict(row) for row in cursor.fetchall()]
+    countries = [dict(row) if hasattr(row, 'keys') else {'country': row[0], 'count': row[1]} for row in cursor.fetchall()]
     
     cursor.execute('SELECT device_type, COUNT(*) as count FROM tracks GROUP BY device_type')
-    devices = [dict(row) for row in cursor.fetchall()]
+    devices = [dict(row) if hasattr(row, 'keys') else {'device_type': row[0], 'count': row[1]} for row in cursor.fetchall()]
     
     cursor.execute('SELECT browser, COUNT(*) as count FROM tracks GROUP BY browser ORDER BY count DESC')
-    browsers = [dict(row) for row in cursor.fetchall()]
-    
-    
-    # conn.close() - Handled by teardown_appcontext
+    browsers = [dict(row) if hasattr(row, 'keys') else {'browser': row[0], 'count': row[1]} for row in cursor.fetchall()]
     
     return jsonify({
         'summary': {
@@ -63,13 +64,13 @@ def tracks():
     offset = request.args.get('offset', 0, type=int)
     
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM tracks ORDER BY last_seen DESC LIMIT ? OFFSET ?', (limit, offset))
-    items = [dict(row) for row in cursor.fetchall()]
+    cursor = get_cursor(conn)
+    cursor.execute(f'SELECT * FROM tracks ORDER BY last_seen DESC LIMIT {P} OFFSET {P}', (limit, offset))
+    items = [dict(row) if hasattr(row, 'keys') else row for row in cursor.fetchall()]
     
     cursor.execute('SELECT COUNT(*) FROM tracks')
-    total = cursor.fetchone()[0]
-    # conn.close() - Handled by teardown_appcontext
+    row = cursor.fetchone()
+    total = row[0] if isinstance(row, tuple) else row['count'] if 'count' in row else list(row.values())[0]
     
     return jsonify({'tracks': items, 'total': total})
 
@@ -78,20 +79,18 @@ def tracks():
 def track_detail(track_id):
     """Get details for a specific track."""
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
-    cursor.execute('SELECT * FROM tracks WHERE track_id = ?', (track_id,))
+    cursor.execute(f'SELECT * FROM tracks WHERE track_id = {P}', (track_id,))
     track = cursor.fetchone()
     
     if not track:
-        # conn.close() - Handled by teardown_appcontext
         return jsonify({'error': 'Not found'}), 404
     
-    cursor.execute('SELECT * FROM clicks WHERE track_id = ? ORDER BY timestamp DESC', (track_id,))
-    clicks = [dict(row) for row in cursor.fetchall()]
-    # conn.close() - Handled by teardown_appcontext
+    cursor.execute(f'SELECT * FROM clicks WHERE track_id = {P} ORDER BY timestamp DESC', (track_id,))
+    clicks = [dict(row) if hasattr(row, 'keys') else row for row in cursor.fetchall()]
     
-    return jsonify({'track': dict(track), 'clicks': clicks})
+    return jsonify({'track': dict(track) if hasattr(track, 'keys') else track, 'clicks': clicks})
 
 @bp_api.route('/export')
 @require_api_key
@@ -100,10 +99,9 @@ def export():
     fmt = request.args.get('format', 'json')
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC')
-    items = [dict(row) for row in cursor.fetchall()]
-    # conn.close() - Handled by teardown_appcontext
+    items = [dict(row) if hasattr(row, 'keys') else row for row in cursor.fetchall()]
     
     if fmt == 'csv' and items:
         output = io.StringIO()

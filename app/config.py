@@ -12,8 +12,9 @@ class Config:
     PORT = int(os.getenv('PORT', 8080))
     DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
     
-    # Database - use current directory for simpler deployment
-    DB_FILE = os.getenv('DB_FILE', 'tracking.db')
+    # Database - PostgreSQL in production (DATABASE_URL), SQLite locally
+    DATABASE_URL = os.getenv('DATABASE_URL')  # Railway injects this
+    DB_FILE = os.getenv('DB_FILE', 'tracking.db')  # SQLite fallback
     
     # Security
     SECRET_KEY = os.getenv('SECRET_KEY', secrets.token_hex(32))
