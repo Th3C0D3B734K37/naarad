@@ -1,193 +1,234 @@
-const BASE = window.location.origin;
-document.getElementById('pixel-url').textContent = BASE + '/track?id=recipient';
+// ──────────────────────────────────────────────
+// Naarad Dashboard — script.js
+// ──────────────────────────────────────────────
 
-// Update status indicator
+const BASE = window.location.origin;
+document.getElementById('pixel-url').textContent = BASE + '/track?id=recipient-id';
+
+// Live / Local indicator
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const statusEl = document.querySelector('.live');
 if (statusEl) {
-    statusEl.innerHTML = `<span class="live-dot" style="background:${isLocal ? '#facc15' : '#4ade80'}"></span> ${isLocal ? 'Localhost' : 'Live'}`;
+    statusEl.innerHTML = `<span class="live-dot" style="background:${isLocal ? '#facc15' : ''}"></span> ${isLocal ? 'Localhost' : 'Live'}`;
 }
 
-// Search Interaction
+// ── Search toggle ──────────────────────────────
 function toggleSearch() {
-    const wrap = document.querySelector('.search-wrap');
+    const wrap = document.getElementById('search-wrap');
     const input = document.getElementById('search-q');
     wrap.classList.toggle('active');
-    if (wrap.classList.contains('active')) {
-        setTimeout(() => input.focus(), 300);
-    }
+    if (wrap.classList.contains('active')) setTimeout(() => input.focus(), 310);
 }
-// Close search if clicked outside
-document.addEventListener('click', (e) => {
-    const wrap = document.querySelector('.search-wrap');
-    if (wrap && !wrap.contains(e.target) && wrap.classList.contains('active') && !document.getElementById('search-q').value) {
+
+document.addEventListener('click', e => {
+    const wrap = document.getElementById('search-wrap');
+    const input = document.getElementById('search-q');
+    if (wrap && !wrap.contains(e.target) && wrap.classList.contains('active') && !input.value) {
         wrap.classList.remove('active');
     }
 });
 
+// ── Data Loading ───────────────────────────────
 async function load() {
     try {
-        const stats = await (await fetch('/api/stats')).json();
-        document.getElementById('stat-unique').textContent = stats.summary.total_unique;
-        document.getElementById('stat-opens').textContent = stats.summary.total_opens;
-        document.getElementById('stat-clicks').textContent = stats.summary.total_clicks;
-        document.getElementById('stat-avg').textContent = stats.summary.avg_opens;
+        const [statsRes, tracksRes] = await Promise.all([
+            fetch('/api/stats'),
+            fetch(`/api/tracks?limit=100&${buildQuery()}`)
+        ]);
+        const stats = await statsRes.json();
+        const data = await tracksRes.json();
 
-        renderChart('countries', stats.geographic);
-        renderChart('devices', stats.devices);
-        renderChart('browsers', stats.browsers);
+        // Stats
+        document.getElementById('stat-unique').textContent = stats.summary?.total_unique ?? '-';
+        document.getElementById('stat-opens').textContent = stats.summary?.total_opens ?? '-';
+        document.getElementById('stat-clicks').textContent = stats.summary?.total_clicks ?? '-';
+        document.getElementById('stat-avg').textContent = stats.summary?.avg_opens ?? '-';
 
-        const q = document.getElementById('search-q') ? document.getElementById('search-q').value : '';
-        const url = q ? `/api/tracks?q=${encodeURIComponent(q)}` : '/api/tracks?limit=50';
+        // Charts
+        renderChart('countries', stats.geographic, 'country');
+        renderChart('devices', stats.devices, 'device_type');
+        renderChart('browsers', stats.browsers, 'browser');
 
-        const data = await (await fetch(url)).json();
-        window.loadedTracks = data.tracks; // Store for modal
-        renderTracks(data.tracks);
+        // Table
+        window.loadedTracks = data.tracks || [];
+        renderTracks(window.loadedTracks);
+
+        const countEl = document.getElementById('track-count');
+        if (countEl) countEl.textContent = `${data.total ?? data.tracks?.length ?? 0} total`;
+
     } catch (e) {
-        console.error(e);
+        console.error('Load failed:', e);
     }
 }
 
-function renderChart(id, data) {
+function buildQuery() {
+    const q = document.getElementById('search-q')?.value?.trim();
+    return q ? `q=${encodeURIComponent(q)}` : '';
+}
+
+// ── Charts ─────────────────────────────────────
+function renderChart(id, data, key) {
     const el = document.getElementById(id);
-    if (!data || !data.length) {
-        el.innerHTML = '<div class="empty">No data</div>';
-        return;
-    }
+    if (!el) return;
+    if (!data?.length) { el.innerHTML = '<div class="empty">No data</div>'; return; }
     const max = Math.max(...data.map(d => d.count));
-    el.innerHTML = data.slice(0, 5).map(d => `
+    el.innerHTML = data.slice(0, 6).map(d => `
         <div class="chart-row">
-            <span>${d.country || d.device_type || d.browser || '-'}</span>
-            <div class="chart-bar"><div class="chart-fill" style="width:${(d.count / max * 100)}%"></div></div>
+            <span>${esc(d[key] || 'Unknown')}</span>
+            <div class="chart-bar"><div class="chart-fill" style="width:${(d.count / max * 100).toFixed(1)}%"></div></div>
             <span>${d.count}</span>
         </div>
     `).join('');
 }
 
+// ── Table ──────────────────────────────────────
 function renderTracks(tracks) {
     const el = document.getElementById('tracks');
-    if (!tracks || !tracks.length) {
-        el.innerHTML = '<tr><td colspan="6" class="empty">No recent activity</td></tr>';
+    if (!tracks?.length) {
+        el.innerHTML = '<tr><td colspan="7" class="empty">No pixels tracked yet</td></tr>';
         return;
     }
-
     el.innerHTML = tracks.map(t => `
-        <tr onclick="openDetail('${t.track_id}')" style="cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.2s">
-            <td style="padding:1rem">
-                <div style="font-weight:600; color:#e5e5e5; font-size:0.9rem; margin-bottom:2px">${esc(t.label || 'Unknown Client')}</div>
-                <div class="mono" style="font-size:0.75rem; color:#555">${esc(t.track_id)}</div>
+        <tr onclick="openDetail('${esc(t.track_id)}')">
+            <td>
+                <div style="font-weight:500; color:var(--text)">${esc(t.label || t.track_id)}</div>
+                ${t.label ? `<div class="mono" style="color:var(--text-muted); font-size:0.7rem">${esc(t.track_id)}</div>` : ''}
             </td>
-            <td style="padding:1rem; font-size:0.85rem; color:#aaa">
-                ${t.city ? `<span style="color:#ddd">${esc(t.city)}</span>, ` : ''}${esc(t.country || 'Unknown')}
+            <td style="color:var(--text-muted)">
+                ${t.city ? `<span style="color:var(--text)">${esc(t.city)}</span>, ` : ''}${esc(t.country || '—')}
             </td>
-            <td class="hide-mobile" style="padding:1rem; font-size:0.85rem; color:#888">
-                ${esc(t.device_type || 'Desktop')} <span style="opacity:0.5">•</span> ${esc(t.os || '-')}
+            <td class="hide-mobile" style="color:var(--text-muted)">
+                ${esc(t.device_type || '—')}${t.os ? ` / ${esc(t.os)}` : ''}
             </td>
-            <td style="padding:1rem; text-align:center">
-                <div style="display:inline-flex; align-items:center; gap:6px; background:#1a1a1a; padding:4px 8px; border-radius:12px; border:1px solid #333">
-                    <span style="color:#4ade80; font-weight:600; font-size:0.8rem">${t.open_count}</span>
-                    <span style="width:1px; height:10px; background:#333"></span>
-                    <span style="color:#60a5fa; font-size:0.8rem">${t.click_count || 0}</span>
-                </div>
+            <td class="hide-mobile" style="color:var(--text-muted); font-size:0.75rem; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                ${esc(t.isp || t.org || '—')}
             </td>
-            <td style="padding:1rem; text-align:right; font-size:0.8rem; color:#666; font-family:monospace">
-                ${t.last_seen ? timeAgo(new Date(t.last_seen)) : '-'}
+            <td style="text-align:center">
+                <span class="count-badge">
+                    <span class="opens">${t.open_count ?? 0}</span>
+                    <span class="sep">/</span>
+                    <span class="clicks">${t.click_count ?? 0}</span>
+                </span>
             </td>
-            <td style="padding:1rem; text-align:right" onclick="event.stopPropagation()">
-                <button class="btn-icon" style="padding:0.4rem; color:#444" onclick="deleteTrack('${t.track_id}')" title="Delete">
-                    <svg class="icon" style="width:16px;height:16px" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            <td style="text-align:right; color:var(--text-muted); font-size:0.75rem">
+                ${t.last_seen ? timeAgo(new Date(t.last_seen)) : '—'}
+            </td>
+            <td onclick="event.stopPropagation()">
+                <button class="row-action" onclick="deleteTrack('${esc(t.track_id)}')" title="Delete pixel">
+                    <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                 </button>
             </td>
         </tr>
     `).join('');
 }
 
+// ── Time Ago ───────────────────────────────────
 function timeAgo(date) {
-    const seconds = Math.floor((new Date() - date) / 1000);
-    let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + "y";
-    interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + "mo";
-    interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + "d";
-    interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + "h";
-    interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + "m";
-    return "just now";
+    const s = Math.floor((Date.now() - date) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm';
+    if (s < 86400) return Math.floor(s / 3600) + 'h';
+    if (s < 2592000) return Math.floor(s / 86400) + 'd';
+    if (s < 31536000) return Math.floor(s / 2592000) + 'mo';
+    return Math.floor(s / 31536000) + 'y';
 }
 
+// ── Detail Drawer ──────────────────────────────
 function openDetail(id) {
     const t = window.loadedTracks.find(x => x.track_id === id);
     if (!t) return;
 
-    // Google Maps Link
     const mapLink = (t.latitude && t.longitude)
-        ? `<a href="https://www.google.com/maps/search/?api=1&query=${t.latitude},${t.longitude}" target="_blank" style="color:#60a5fa; text-decoration:none; display:flex; align-items:center; gap:4px; font-size:0.8rem; margin-top:4px">
-             See on Map <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-           </a>`
+        ? `<a href="https://maps.google.com/?q=${t.latitude},${t.longitude}" target="_blank"
+               style="color:var(--accent); font-size:0.75rem; text-decoration:none; display:inline-flex; align-items:center; gap:3px; margin-top:3px">
+             <svg style="width:11px;height:11px;fill:currentColor" viewBox="0 0 24 24">
+               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
+             </svg>Open in Maps</a>`
         : '';
 
-    // Ensure all fields are safe
     const sections = [
         {
-            title: "Identity & Context",
+            title: 'Identity & Targeting',
             items: [
-                { label: 'Label', value: t.label || '-', highlight: true },
-                { label: 'Event ID', value: t.track_id, mono: true },
+                { label: 'Track ID', value: t.track_id, mono: true, full: true },
+                { label: 'Label', value: t.label, highlight: true },
                 { label: 'Recipient', value: t.recipient },
-                { label: 'Subject', value: t.subject, full: true }
+                { label: 'Subject', value: t.subject, full: true },
+                { label: 'Sender', value: t.sender },
+                { label: 'Campaign', value: t.campaign_id },
+                { label: 'Sent At', value: t.sent_at },
             ]
         },
         {
-            title: "Location & Network",
+            title: 'Engagement',
             items: [
-                { label: 'Generic', value: `${t.city || ''}, ${t.country || ''}` },
+                { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : null },
+                { label: 'Last Seen', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : null },
+                { label: 'Opens', value: t.open_count, highlight: true },
+                { label: 'Clicks', value: t.click_count ?? 0, highlight: true },
+            ]
+        },
+        {
+            title: 'Network & Location',
+            items: [
                 { label: 'IP Address', value: t.ip_address, mono: true },
-                { label: 'ISP / Org', value: t.isp || t.org },
-                { label: 'Location', value: `${t.city || '-'}, ${t.country || '-'}`, raw: mapLink },
-                { label: 'Coordinates', value: (t.latitude && t.longitude) ? `${t.latitude}, ${t.longitude}` : '-', mono: true }
+                { label: 'ISP', value: t.isp },
+                { label: 'Org / ASN', value: t.org ? `${t.org}${t.asn ? ' · ' + t.asn : ''}` : t.asn },
+                { label: 'Location', value: [t.city, t.region, t.country].filter(Boolean).join(', '), raw: mapLink },
+                { label: 'Coordinates', value: (t.latitude && t.longitude) ? `${t.latitude}, ${t.longitude}` : null, mono: true },
+                { label: 'Timezone', value: t.timezone },
             ]
         },
         {
-            title: "Device Fingerprint",
+            title: 'Device Fingerprint',
             items: [
-                { label: 'Browser', value: `${t.browser} ${t.browser_version || ''}` },
-                { label: 'Platform', value: `${t.os} ${t.os_version || ''}` },
-                { label: 'Device', value: `${t.device_brand || ''} ${t.device_type || ''}` },
-                { label: 'User Agent', value: t.user_agent, full: true, small: true, mono: true }
+                { label: 'Browser', value: t.browser ? `${t.browser} ${t.browser_version || ''}`.trim() : null },
+                { label: 'OS', value: t.os ? `${t.os} ${t.os_version || ''}`.trim() : null },
+                { label: 'Device Type', value: t.device_type },
+                { label: 'Brand', value: t.device_brand },
+                { label: 'Mobile', value: t.is_mobile != null ? (t.is_mobile ? 'Yes' : 'No') : null },
+                { label: 'Bot', value: t.is_bot != null ? (t.is_bot ? 'Yes' : 'No') : null },
+                { label: 'User Agent', value: t.user_agent, full: true, small: true, mono: true },
             ]
         },
         {
-            title: "Timeline",
+            title: 'HTTP Headers & Context',
             items: [
-                { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : '-' },
-                { label: 'Last Activity', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : '-' },
-                { label: 'Total Opens', value: t.open_count, highlight: true },
-                { label: 'Total Clicks', value: t.click_count || 0, highlight: true }
+                { label: 'Referer', value: t.referer, full: true },
+                { label: 'Accept-Language', value: t.accept_language },
+                { label: 'Connection', value: t.connection_type },
+                { label: 'Do Not Track', value: t.do_not_track },
+                { label: 'Cache-Control', value: t.cache_control },
+                { label: 'Sec-CH-UA', value: t.sec_ch_ua, full: true, small: true, mono: true },
+                { label: 'CH Platform', value: t.sec_ch_ua_platform },
+                { label: 'CH Mobile', value: t.sec_ch_ua_mobile },
             ]
         }
     ];
 
-    document.getElementById('modal-content').innerHTML = sections.map(section => `
+    document.getElementById('modal-content').innerHTML = sections.map(section => {
+        const visibleItems = section.items.filter(f => f.value != null && f.value !== '');
+        if (!visibleItems.length) return '';
+        return `
         <div class="modal-section">
             <h4 class="section-title">${section.title}</h4>
             <div class="detail-grid">
-                ${section.items.map(f => `
+                ${visibleItems.map(f => `
                     <div class="detail-item ${f.full ? 'full-width' : ''}">
                         <div class="detail-label">${f.label}</div>
                         <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
-                            ${esc(f.value || '-')}
+                            ${esc(String(f.value))}
                             ${f.raw || ''}
                         </div>
                     </div>
                 `).join('')}
             </div>
-        </div>
-    `).join('<hr class="modal-divider">') +
-        `<div style="margin-top:1.5rem; text-align:right">
-        <button class="btn" style="border:1px solid #333; color:#ef4444" onclick="deleteTrack('${t.track_id}'); closeModal()">Delete Pixel</button>
-     </div>`;
+        </div>`;
+    }).join('') + `
+    <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap">
+        <button class="btn" onclick="editLabel('${esc(t.track_id)}', '${esc(t.label || '')}')">Edit Label</button>
+        <button class="btn" style="color:#c0392b; border-color:#c0392b" onclick="deleteTrack('${esc(t.track_id)}'); closeModal()">Delete</button>
+    </div>`;
 
     document.getElementById('modal').style.display = 'flex';
 }
@@ -196,22 +237,20 @@ function closeModal() {
     document.getElementById('modal').style.display = 'none';
 }
 
-// Close on outside click
-document.getElementById('modal').addEventListener('click', (e) => {
+document.getElementById('modal').addEventListener('click', e => {
     if (e.target.id === 'modal') closeModal();
 });
 
-// Modal Actions
+// ── Create Modal ───────────────────────────────
 function generateRandomId() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < 8; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-    document.getElementById('new-id').value = 'client-' + result;
+    let id = '';
+    for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('new-id').value = 'px-' + id;
 }
 
 function openCreateModal() {
     resetCreateModal();
-    generateRandomId();
     document.getElementById('create-modal').style.display = 'flex';
 }
 
@@ -226,47 +265,46 @@ function closeCreateModal() {
     document.getElementById('create-modal').style.display = 'none';
 }
 
+document.getElementById('create-modal').addEventListener('click', e => {
+    if (e.target.id === 'create-modal') closeCreateModal();
+});
+
 async function submitCreateTrack() {
     const id = document.getElementById('new-id').value.trim();
     const label = document.getElementById('new-label').value.trim();
-
-    if (!id) return alert("ID is required");
+    if (!id) { alert('Track ID is required'); return; }
 
     try {
         const res = await fetch('/api/track', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ track_id: id, label: label })
+            body: JSON.stringify({ track_id: id, label })
         });
         const data = await res.json();
+        if (data.error) { alert('Error: ' + data.error); return; }
 
-        if (data.error) {
-            alert('Error: ' + data.error);
-            return;
-        }
-
-        // Show success step
+        // Show result step
         document.getElementById('create-step-1').style.display = 'none';
         document.getElementById('create-step-2').style.display = 'block';
 
         const origin = window.location.origin;
         document.getElementById('res-pixel-code').textContent =
             `<img src="${origin}/track?id=${data.track_id}" width="1" height="1" style="display:none" />`;
-
         document.getElementById('res-link-code').textContent =
-            `${origin}/track?id=${data.track_id}&r=https://example.com`;
+            `${origin}/click/${data.track_id}/YOUR_URL_HERE`;
 
         load();
     } catch (e) {
-        alert('Failed to create pixel');
+        alert('Failed to create pixel. Check console.');
+        console.error(e);
     }
 }
 
+// ── CRUD ───────────────────────────────────────
 async function deleteTrack(id) {
-    if (!confirm(`Delete pixel "${id}"? This history cannot be recovered.`)) return;
-
+    if (!confirm(`Delete pixel "${id}"?\n\nAll history will be permanently lost.`)) return;
     try {
-        await fetch(`/api/track/${id}`, { method: 'DELETE' });
+        await fetch(`/api/track/${encodeURIComponent(id)}`, { method: 'DELETE' });
         load();
     } catch (e) {
         alert('Delete failed');
@@ -274,11 +312,10 @@ async function deleteTrack(id) {
 }
 
 async function editLabel(id, current) {
-    const newLabel = prompt("Enter new label:", current);
+    const newLabel = prompt('New label:', current);
     if (newLabel === null) return;
-
     try {
-        await fetch(`/api/track/${id}`, {
+        await fetch(`/api/track/${encodeURIComponent(id)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ label: newLabel })
@@ -290,30 +327,19 @@ async function editLabel(id, current) {
     }
 }
 
-function copyLink(id) {
-    const url = window.location.origin + '/track?id=' + id;
-    navigator.clipboard.writeText(url).then(() => {
-        // Simple toast or feedback
-        const btn = event.target;
-        const old = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = old, 1000);
-    });
-}
-
+// ── Utilities ──────────────────────────────────
 function copyText(el) {
-    const text = el.textContent;
+    const text = el.textContent.trim();
     navigator.clipboard.writeText(text).then(() => {
-        const old = el.style.borderColor;
-        el.style.borderColor = '#4ade80';
-        setTimeout(() => el.style.borderColor = '#333', 500);
+        el.classList.add('copy-flash');
+        setTimeout(() => el.classList.remove('copy-flash'), 600);
     });
 }
 
 function esc(s) {
-    if (!s) return '';
+    if (s == null) return '';
     const d = document.createElement('div');
-    d.textContent = s;
+    d.textContent = String(s);
     return d.innerHTML;
 }
 
@@ -321,7 +347,6 @@ function exportData() {
     window.open('/api/export?format=csv', '_blank');
 }
 
-
-
+// ── Init ───────────────────────────────────────
 load();
 setInterval(load, 30000);
