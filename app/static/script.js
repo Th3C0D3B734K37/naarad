@@ -1,18 +1,54 @@
-// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
 // Naarad Dashboard — script.js
-// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
 
 const BASE = window.location.origin;
-document.getElementById('pixel-url').textContent = BASE + '/track?id=recipient-id';
 
-// Live / Local indicator
+// ── Status Indicators ────────────────────────────────────────────────────────
+const localStatusEl = document.getElementById('local-status');
+const syncStatusEl = document.getElementById('sync-status');
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const statusEl = document.querySelector('.live');
-if (statusEl) {
-    statusEl.innerHTML = `<span class="live-dot" style="background:${isLocal ? '#facc15' : ''}"></span> ${isLocal ? 'Localhost' : 'Live'}`;
+let syncEnabled = false;
+
+async function fetchSyncStatus() {
+    try {
+        const res = await fetch('/api/sync/status', { headers: getAuthHeaders() });
+        if (res.ok) {
+            const data = await res.json();
+            syncEnabled = data.enabled;
+        }
+    } catch (e) { }
+
+    if (localStatusEl) {
+        localStatusEl.innerHTML = `<span class="live-dot" style="background:${isLocal ? '#facc15' : ''}"></span>
+            ${isLocal ? 'Local Node' : 'Live Node'}`;
+        localStatusEl.title = isLocal ? 'Running locally' : 'Running on public server';
+    }
+
+    if (syncStatusEl && syncEnabled) {
+        syncStatusEl.style.display = 'inline-flex';
+        syncStatusEl.innerHTML = `<span style="font-size:10px; margin-right:4px">☁️</span> Syncing`;
+        syncStatusEl.classList.add('sync-active');
+    }
 }
 
-// ── Search toggle ──────────────────────────────
+async function triggerManualSync() {
+    if (!syncEnabled) return;
+    showToast('Background sync is running...', 'info');
+    load();
+}
+
+// Update the Quick Embed snippet once we know the origin
+const pixelUrlEl = document.getElementById('pixel-url');
+if (pixelUrlEl) pixelUrlEl.textContent = BASE + '/track?id=recipient-id';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentPage = 0;
+const PAGE_SIZE = 50;
+let totalTracks = 0;
+let searchDebounceTimer = null;
+
+// ── Search toggle ──────────────────────────────────────────────────────────
 function toggleSearch() {
     const wrap = document.getElementById('search-wrap');
     const input = document.getElementById('search-q');
@@ -28,13 +64,74 @@ document.addEventListener('click', e => {
     }
 });
 
-// ── Data Loading ───────────────────────────────
+// Live search — debounced 350ms
+const searchInput = document.getElementById('search-q');
+if (searchInput) {
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            currentPage = 0;
+            load();
+        }, 350);
+    });
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { clearTimeout(searchDebounceTimer); currentPage = 0; load(); }
+        if (e.key === 'Escape') toggleSearch();
+    });
+}
+
+// ── Skeleton loading helpers ───────────────────────────────────────────────
+function showSkeleton() {
+    const skeleton = `<tr class="skeleton-row">
+        ${Array(7).fill('<td><div class="skeleton-line"></div></td>').join('')}
+    </tr>`.repeat(5);
+    const tbody = document.getElementById('tracks');
+    if (tbody) tbody.innerHTML = skeleton;
+
+    ['stat-unique', 'stat-opens', 'stat-clicks', 'stat-avg'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<span class="skeleton-val"></span>';
+    });
+}
+
+function showError(message) {
+    const tbody = document.getElementById('tracks');
+    if (tbody) tbody.innerHTML = `
+        <tr><td colspan="7">
+            <div class="error-state">
+                <div class="error-icon">⚠</div>
+                <div class="error-msg">${esc(message)}</div>
+                <button class="btn" onclick="load()">Retry</button>
+            </div>
+        </td></tr>`;
+
+    ['stat-unique', 'stat-opens', 'stat-clicks', 'stat-avg'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '—';
+    });
+}
+
+// ── Data Loading ───────────────────────────────────────────────────────────
 async function load() {
+    showSkeleton();
     try {
+        const q = buildQuery();
         const [statsRes, tracksRes] = await Promise.all([
-            fetch('/api/stats'),
-            fetch(`/api/tracks?limit=100&${buildQuery()}`)
+            fetch('/api/stats', { headers: getAuthHeaders() }),
+            fetch(`/api/tracks?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}${q ? '&' + q : ''}`,
+                { headers: getAuthHeaders() }),
         ]);
+
+        if (!statsRes.ok || !tracksRes.ok) {
+            const status = !statsRes.ok ? statsRes.status : tracksRes.status;
+            if (status === 401) {
+                showError('Access denied — click ⚙ Settings to set your API key.');
+            } else {
+                showError(`Server error (${status}). Check the console.`);
+            }
+            return;
+        }
+
         const stats = await statsRes.json();
         const data = await tracksRes.json();
 
@@ -51,14 +148,23 @@ async function load() {
 
         // Table
         window.loadedTracks = data.tracks || [];
+        totalTracks = data.total ?? data.tracks?.length ?? 0;
         renderTracks(window.loadedTracks);
 
         const countEl = document.getElementById('track-count');
-        if (countEl) countEl.textContent = `${data.total ?? data.tracks?.length ?? 0} total`;
+        if (countEl) countEl.textContent = `${totalTracks} total`;
+
+        renderPagination();
 
     } catch (e) {
         console.error('Load failed:', e);
+        showError('Could not connect to server. Is it running?');
     }
+}
+
+function getAuthHeaders() {
+    const key = localStorage.getItem('naarad_api_key') || '';
+    return key ? { 'X-API-Key': key } : {};
 }
 
 function buildQuery() {
@@ -66,22 +172,53 @@ function buildQuery() {
     return q ? `q=${encodeURIComponent(q)}` : '';
 }
 
-// ── Charts ─────────────────────────────────────
+// ── Charts ─────────────────────────────────────────────────────────────────
 function renderChart(id, data, key) {
     const el = document.getElementById(id);
     if (!el) return;
     if (!data?.length) { el.innerHTML = '<div class="empty">No data</div>'; return; }
+
     const max = Math.max(...data.map(d => d.count));
-    el.innerHTML = data.slice(0, 6).map(d => `
+    // L-17: Guard against max === 0 to avoid NaN in bar widths
+    const safeMax = max || 1;
+    const shown = data.slice(0, 8);
+    const more = data.length - shown.length;
+
+    el.innerHTML = shown.map(d => `
         <div class="chart-row">
-            <span>${esc(d[key] || 'Unknown')}</span>
-            <div class="chart-bar"><div class="chart-fill" style="width:${(d.count / max * 100).toFixed(1)}%"></div></div>
+            <span title="${esc(String(d[key] || 'Unknown'))}">${esc(d[key] || 'Unknown')}</span>
+            <div class="chart-bar"><div class="chart-fill" style="width:${(d.count / safeMax * 100).toFixed(1)}%"></div></div>
             <span>${d.count}</span>
         </div>
-    `).join('');
+    `).join('') + (more > 0 ? `<div class="chart-more">+${more} more</div>` : '');
 }
 
-// ── Table ──────────────────────────────────────
+// ── Pagination ─────────────────────────────────────────────────────────────
+function renderPagination() {
+    const totalPages = Math.ceil(totalTracks / PAGE_SIZE);
+    const el = document.getElementById('pagination');
+    if (!el) return;
+
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+    el.innerHTML = `
+        <button class="btn" onclick="goPage(${currentPage - 1})" ${currentPage === 0 ? 'disabled' : ''}>← Prev</button>
+        <span class="page-info">Page ${currentPage + 1} / ${totalPages}</span>
+        <button class="btn" onclick="goPage(${currentPage + 1})" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>
+    `;
+}
+
+function goPage(n) {
+    const totalPages = Math.ceil(totalTracks / PAGE_SIZE);
+    currentPage = Math.max(0, Math.min(n, totalPages - 1));
+    load();
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────
+// C-02/C-03 FIX: Use event delegation instead of inline onclick with string interpolation.
+// This eliminates the XSS vector where track_id/label containing single quotes could
+// break out of the JS string context.
+
 function renderTracks(tracks) {
     const el = document.getElementById('tracks');
     if (!tracks?.length) {
@@ -89,7 +226,7 @@ function renderTracks(tracks) {
         return;
     }
     el.innerHTML = tracks.map(t => `
-        <tr onclick="openDetail('${esc(t.track_id)}')">
+        <tr data-track-id="${esc(t.track_id)}">
             <td>
                 <div style="font-weight:500; color:var(--text)">${esc(t.label || t.track_id)}</div>
                 ${t.label ? `<div class="mono" style="color:var(--text-muted); font-size:0.7rem">${esc(t.track_id)}</div>` : ''}
@@ -110,11 +247,12 @@ function renderTracks(tracks) {
                     <span class="clicks">${t.click_count ?? 0}</span>
                 </span>
             </td>
-            <td style="text-align:right; color:var(--text-muted); font-size:0.75rem">
+            <td style="text-align:right; color:var(--text-muted); font-size:0.75rem"
+                title="${t.last_seen ? new Date(t.last_seen).toLocaleString() : ''}">
                 ${t.last_seen ? timeAgo(new Date(t.last_seen)) : '—'}
             </td>
-            <td onclick="event.stopPropagation()">
-                <button class="row-action" onclick="deleteTrack('${esc(t.track_id)}')" title="Delete pixel">
+            <td>
+                <button class="row-action btn-delete-track" data-track-id="${esc(t.track_id)}" title="Delete pixel">
                     <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                 </button>
             </td>
@@ -122,20 +260,47 @@ function renderTracks(tracks) {
     `).join('');
 }
 
-// ── Time Ago ───────────────────────────────────
+// Event delegation for table clicks (C-02/C-03 XSS fix)
+document.getElementById('tracks').addEventListener('click', e => {
+    // Handle delete button
+    const deleteBtn = e.target.closest('.btn-delete-track');
+    if (deleteBtn) {
+        e.stopPropagation();
+        const trackId = deleteBtn.dataset.trackId;
+        if (trackId) confirmDelete(trackId);
+        return;
+    }
+    // Handle row click → open detail
+    const row = e.target.closest('tr[data-track-id]');
+    if (row) {
+        const trackId = row.dataset.trackId;
+        if (trackId) openDetail(trackId);
+    }
+});
+
+// ── Time Ago ───────────────────────────────────────────────────────────────
 function timeAgo(date) {
-    const s = Math.floor((Date.now() - date) / 1000);
+    if (!(date instanceof Date) || isNaN(date)) return '—';
+    const s = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (s < 0) return 'just now';   // clock drift / future timestamps
     if (s < 60) return 'just now';
-    if (s < 3600) return Math.floor(s / 60) + 'm';
-    if (s < 86400) return Math.floor(s / 3600) + 'h';
-    if (s < 2592000) return Math.floor(s / 86400) + 'd';
-    if (s < 31536000) return Math.floor(s / 2592000) + 'mo';
-    return Math.floor(s / 31536000) + 'y';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    if (s < 604800) return Math.floor(s / 86400) + 'd ago';
+    if (s < 2678400) return Math.floor(s / 604800) + 'w ago';
+    // Use actual month-aware calculation instead of fixed seconds
+    const then = new Date(date);
+    const nowDate = new Date();
+    const months = (nowDate.getFullYear() - then.getFullYear()) * 12 + (nowDate.getMonth() - then.getMonth());
+    // L-04: Handle same-month edge case (months === 0 but > 4 weeks)
+    if (months <= 0) return Math.floor(s / 604800) + 'w ago';
+    if (months < 12) return months + 'mo ago';
+    return Math.floor(months / 12) + 'y ago';
 }
 
-// ── Detail Drawer ──────────────────────────────
+// ── Detail Drawer ──────────────────────────────────────────────────────────
 function openDetail(id) {
-    const t = window.loadedTracks.find(x => x.track_id === id);
+    const t = window.loadedTracks?.find(x => x.track_id === id);
     if (!t) return;
 
     const mapLink = (t.latitude && t.longitude)
@@ -207,13 +372,13 @@ function openDetail(id) {
     ];
 
     document.getElementById('modal-content').innerHTML = sections.map(section => {
-        const visibleItems = section.items.filter(f => f.value != null && f.value !== '');
-        if (!visibleItems.length) return '';
+        const vis = section.items.filter(f => f.value != null && f.value !== '');
+        if (!vis.length) return '';
         return `
         <div class="modal-section">
             <h4 class="section-title">${section.title}</h4>
             <div class="detail-grid">
-                ${visibleItems.map(f => `
+                ${vis.map(f => `
                     <div class="detail-item ${f.full ? 'full-width' : ''}">
                         <div class="detail-label">${f.label}</div>
                         <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
@@ -225,10 +390,18 @@ function openDetail(id) {
             </div>
         </div>`;
     }).join('') + `
-    <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap">
-        <button class="btn" onclick="editLabel('${esc(t.track_id)}', '${esc(t.label || '')}')">Edit Label</button>
-        <button class="btn" style="color:#c0392b; border-color:#c0392b" onclick="deleteTrack('${esc(t.track_id)}'); closeModal()">Delete</button>
+    <div class="modal-actions">
+        <button class="btn" id="btn-edit-label">Edit Label</button>
+        <button class="btn btn-danger" id="btn-delete-detail">Delete</button>
     </div>`;
+
+    // C-02/C-03 XSS fix: Use DOM event listeners instead of inline onclick
+    document.getElementById('btn-edit-label').addEventListener('click', () => {
+        openInlineEdit(t.track_id, t.label || '');
+    });
+    document.getElementById('btn-delete-detail').addEventListener('click', () => {
+        confirmDelete(t.track_id, true);
+    });
 
     document.getElementById('modal').style.display = 'flex';
 }
@@ -241,11 +414,90 @@ document.getElementById('modal').addEventListener('click', e => {
     if (e.target.id === 'modal') closeModal();
 });
 
-// ── Create Modal ───────────────────────────────
+// ── Inline Label Edit (replaces prompt()) ─────────────────────────────────
+function openInlineEdit(id, current) {
+    const overlay = document.getElementById('edit-modal');
+    document.getElementById('edit-label-input').value = current;
+    document.getElementById('edit-label-input').dataset.trackId = id;
+    overlay.style.display = 'flex';
+    setTimeout(() => document.getElementById('edit-label-input').focus(), 50);
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+}
+
+document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target.id === 'edit-modal') closeEditModal();
+});
+
+async function submitEditLabel() {
+    const input = document.getElementById('edit-label-input');
+    const id = input.dataset.trackId;
+    const newLabel = input.value.trim();
+
+    try {
+        const res = await fetch(`/api/track/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ label: newLabel }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        closeEditModal();
+        closeModal();
+        load();
+    } catch (e) {
+        showToast('Update failed: ' + e.message, 'error');
+    }
+}
+
+// ── Custom Confirm Dialog (replaces confirm()) ─────────────────────────────
+let _deleteId = null;
+let _deleteCloseMain = false;
+
+function confirmDelete(id, closeMain = false) {
+    _deleteId = id;
+    _deleteCloseMain = closeMain;
+    document.getElementById('confirm-msg').textContent =
+        `Permanently delete pixel "${id}" and all its history?`;
+    document.getElementById('confirm-modal').style.display = 'flex';
+}
+
+function closeConfirmModal() {
+    document.getElementById('confirm-modal').style.display = 'none';
+    _deleteId = null;
+}
+
+document.getElementById('confirm-modal').addEventListener('click', e => {
+    if (e.target.id === 'confirm-modal') closeConfirmModal();
+});
+
+async function executeDelete() {
+    if (!_deleteId) return;
+    const id = _deleteId;
+    closeConfirmModal();
+    try {
+        const res = await fetch(`/api/track/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (_deleteCloseMain) closeModal();
+        showToast('Pixel deleted', 'success');
+        load();
+    } catch (e) {
+        showToast('Delete failed: ' + e.message, 'error');
+    }
+}
+
+// ── Create Modal ───────────────────────────────────────────────────────────
 function generateRandomId() {
+    // M-11: Use crypto.getRandomValues for unpredictable IDs
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const arr = new Uint8Array(8);
+    (window.crypto || window.msCrypto).getRandomValues(arr);
     let id = '';
-    for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    for (let i = 0; i < 8; i++) id += chars[arr[i] % chars.length];
     document.getElementById('new-id').value = 'px-' + id;
 }
 
@@ -272,18 +524,17 @@ document.getElementById('create-modal').addEventListener('click', e => {
 async function submitCreateTrack() {
     const id = document.getElementById('new-id').value.trim();
     const label = document.getElementById('new-label').value.trim();
-    if (!id) { alert('Track ID is required'); return; }
+    if (!id) { showToast('Track ID is required', 'error'); return; }
 
     try {
         const res = await fetch('/api/track', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ track_id: id, label })
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ track_id: id, label }),
         });
         const data = await res.json();
-        if (data.error) { alert('Error: ' + data.error); return; }
+        if (!res.ok || data.error) { showToast('Error: ' + (data.error || res.status), 'error'); return; }
 
-        // Show result step
         document.getElementById('create-step-1').style.display = 'none';
         document.getElementById('create-step-2').style.display = 'block';
 
@@ -293,47 +544,61 @@ async function submitCreateTrack() {
         document.getElementById('res-link-code').textContent =
             `${origin}/click/${data.track_id}/YOUR_URL_HERE`;
 
+        // Update Quick Embed snippet in main page to show the newly created pixel
+        if (pixelUrlEl) pixelUrlEl.textContent = `${origin}/track?id=${data.track_id}`;
+
         load();
     } catch (e) {
-        alert('Failed to create pixel. Check console.');
-        console.error(e);
+        showToast('Failed to create pixel: ' + e.message, 'error');
     }
 }
 
-// ── CRUD ───────────────────────────────────────
-async function deleteTrack(id) {
-    if (!confirm(`Delete pixel "${id}"?\n\nAll history will be permanently lost.`)) return;
-    try {
-        await fetch(`/api/track/${encodeURIComponent(id)}`, { method: 'DELETE' });
-        load();
-    } catch (e) {
-        alert('Delete failed');
-    }
+// ── Toast Notifications ────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = msg;
+    container.appendChild(toast);
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add('visible'));
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
-async function editLabel(id, current) {
-    const newLabel = prompt('New label:', current);
-    if (newLabel === null) return;
-    try {
-        await fetch(`/api/track/${encodeURIComponent(id)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ label: newLabel })
-        });
-        closeModal();
-        load();
-    } catch (e) {
-        alert('Update failed');
-    }
-}
-
-// ── Utilities ──────────────────────────────────
+// ── Utilities ──────────────────────────────────────────────────────────────
 function copyText(el) {
     const text = el.textContent.trim();
-    navigator.clipboard.writeText(text).then(() => {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            el.classList.add('copy-flash');
+            showToast('Copied!', 'success');
+            setTimeout(() => el.classList.remove('copy-flash'), 600);
+        }).catch(() => fallbackCopy(text, el));
+    } else {
+        fallbackCopy(text, el);
+    }
+}
+
+function fallbackCopy(text, el) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+        document.execCommand('copy');
         el.classList.add('copy-flash');
+        showToast('Copied!', 'success');
         setTimeout(() => el.classList.remove('copy-flash'), 600);
-    });
+    } catch (e) {
+        showToast('Copy failed — please copy manually', 'error');
+    }
+    document.body.removeChild(ta);
 }
 
 function esc(s) {
@@ -343,10 +608,83 @@ function esc(s) {
     return d.innerHTML;
 }
 
+// C-04: Export via fetch + blob download (works with auth headers)
 function exportData() {
-    window.open('/api/export?format=csv', '_blank');
+    fetch('/api/export?format=csv', { headers: getAuthHeaders() })
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.blob();
+        })
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'naarad_export.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        })
+        .catch(e => showToast('Export failed: ' + e.message, 'error'));
 }
 
-// ── Init ───────────────────────────────────────
-load();
-setInterval(load, 30000);
+// ── Settings Modal (L-11: API Key Setup UI) ────────────────────────────────
+function openSettingsModal() {
+    const overlay = document.getElementById('settings-modal');
+    const input = document.getElementById('settings-api-key');
+    input.value = localStorage.getItem('naarad_api_key') || '';
+    overlay.style.display = 'flex';
+    setTimeout(() => input.focus(), 50);
+}
+
+function closeSettingsModal() {
+    document.getElementById('settings-modal').style.display = 'none';
+}
+
+function saveSettings() {
+    const key = document.getElementById('settings-api-key').value.trim();
+    if (key) {
+        localStorage.setItem('naarad_api_key', key);
+        showToast('API key saved', 'success');
+    } else {
+        localStorage.removeItem('naarad_api_key');
+        showToast('API key cleared', 'info');
+    }
+    closeSettingsModal();
+    load();
+}
+
+document.getElementById('settings-modal')?.addEventListener('click', e => {
+    if (e.target.id === 'settings-modal') closeSettingsModal();
+});
+
+// ── Global keyboard shortcut: Escape closes any open modal ─────────────────
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    ['modal', 'create-modal', 'edit-modal', 'confirm-modal', 'settings-modal'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.style.display !== 'none') el.style.display = 'none';
+    });
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+fetchSyncStatus().then(load);
+
+// L-01: Pause auto-refresh when tab is backgrounded to save bandwidth/battery
+let _autoRefreshId = null;
+function startAutoRefresh() {
+    if (_autoRefreshId) return;
+    _autoRefreshId = setInterval(load, 30000);
+}
+function stopAutoRefresh() {
+    if (_autoRefreshId) { clearInterval(_autoRefreshId); _autoRefreshId = null; }
+}
+startAutoRefresh();
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopAutoRefresh();
+    } else {
+        load(); // Refresh immediately when tab becomes visible
+        startAutoRefresh();
+    }
+});

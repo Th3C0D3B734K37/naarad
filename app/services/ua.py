@@ -1,40 +1,48 @@
+"""
+Naarad - User-Agent Parsing
+"""
 
 import re
+
 
 def parse_user_agent(ua):
     """Parse user agent string for device/browser info."""
     if not ua:
-        return {'browser': 'Unknown', 'browser_version': '', 'os': 'Unknown',
-                'os_version': '', 'device_type': 'Unknown', 'device_brand': 'Unknown',
-                'is_mobile': False, 'is_bot': False}
-    
+        return {
+            'browser': 'Unknown', 'browser_version': '', 'os': 'Unknown',
+            'os_version': '', 'device_type': 'Unknown', 'device_brand': 'Unknown',
+            'is_mobile': False, 'is_bot': False
+        }
+
     ua_lower = ua.lower()
-    
+
+    # ── Browser Detection ───────────────────────────────────────────────────
+    # Order matters: most specific first to avoid misidentification.
+    # Edge must come before Chrome; Opera before Chrome; Chromium before Chrome.
     browser, browser_version = 'Other', ''
     patterns = [
-        (r'edg[e]?/([\d.]+)', 'Edge'),
-        (r'opr/([\d.]+)', 'Opera'),
-        (r'chrome/([\d.]+)', 'Chrome'),
-        (r'firefox/([\d.]+)', 'Firefox'),
-        (r'safari/([\d.]+)', 'Safari'),
+        (r'edg(?:e|\/)([\d.]+)', 'Edge'),
+        (r'opr\/([\d.]+)', 'Opera'),
+        (r'chromium\/([\d.]+)', 'Chromium'),
+        (r'chrome\/([\d.]+)', 'Chrome'),
+        (r'firefox\/([\d.]+)', 'Firefox'),
+        # Safari must be last: Chrome/Edge UAs also contain "Safari/"
+        (r'version\/([\d.]+).*safari', 'Safari'),
     ]
     for pattern, name in patterns:
         match = re.search(pattern, ua_lower)
         if match:
             browser, browser_version = name, match.group(1)
             break
-    
-    if browser == 'Safari' and 'chrome' in ua_lower:
-        match = re.search(r'chrome/([\d.]+)', ua_lower)
-        if match:
-            browser, browser_version = 'Chrome', match.group(1)
-    
+
+    # ── OS Detection ────────────────────────────────────────────────────────
     os_name, os_version = 'Other', ''
     os_patterns = [
         (r'windows nt ([\d.]+)', 'Windows'),
         (r'mac os x ([\d_.]+)', 'macOS'),
         (r'android ([\d.]+)', 'Android'),
         (r'iphone os ([\d_]+)', 'iOS'),
+        (r'ipad.*os ([\d_]+)', 'iPadOS'),
         (r'linux', 'Linux'),
     ]
     for pattern, name in os_patterns:
@@ -44,30 +52,51 @@ def parse_user_agent(ua):
             if match.lastindex:
                 os_version = match.group(1).replace('_', '.')
             break
-    
-    is_mobile = any(x in ua_lower for x in ['mobile', 'android', 'iphone'])
-    is_tablet = 'ipad' in ua_lower or 'tablet' in ua_lower
-    is_bot = any(x in ua_lower for x in ['bot', 'crawler', 'spider', 'preview'])
-    
+
+    # ── Device Classification ───────────────────────────────────────────────
+    # Check tablet before mobile: iPad sends "mobile safari" in some UAs.
+    is_bot = any(x in ua_lower for x in [
+        'bot', 'crawler', 'spider', 'preview', 'googlebot', 'bingbot',
+        'slurp', 'duckduckbot', 'facebot', 'ia_archiver', 'ahrefsbot',
+    ])
+    is_tablet = (
+        'ipad' in ua_lower or
+        'tablet' in ua_lower or
+        ('android' in ua_lower and 'mobile' not in ua_lower)  # Android tablet pattern
+    )
+    is_mobile = (
+        not is_tablet and
+        any(x in ua_lower for x in ['mobile', 'iphone', 'ipod'])
+    )
+
     device_type = 'Desktop'
     if is_bot:
         device_type = 'Bot'
-    elif is_mobile:
-        device_type = 'Mobile'
     elif is_tablet:
         device_type = 'Tablet'
-    
+    elif is_mobile:
+        device_type = 'Mobile'
+
+    # ── Brand Detection ─────────────────────────────────────────────────────
     device_brand = 'Unknown'
-    if 'iphone' in ua_lower or 'ipad' in ua_lower or 'mac' in ua_lower:
+    if 'iphone' in ua_lower or 'ipad' in ua_lower or 'macintosh' in ua_lower:
         device_brand = 'Apple'
     elif 'samsung' in ua_lower:
         device_brand = 'Samsung'
     elif 'pixel' in ua_lower:
         device_brand = 'Google'
-    
+    elif 'huawei' in ua_lower:
+        device_brand = 'Huawei'
+    elif 'xiaomi' in ua_lower or 'redmi' in ua_lower:
+        device_brand = 'Xiaomi'
+
     return {
-        'browser': browser, 'browser_version': browser_version,
-        'os': os_name, 'os_version': os_version,
-        'device_type': device_type, 'device_brand': device_brand,
-        'is_mobile': is_mobile, 'is_bot': is_bot
+        'browser': browser,
+        'browser_version': browser_version,
+        'os': os_name,
+        'os_version': os_version,
+        'device_type': device_type,
+        'device_brand': device_brand,
+        'is_mobile': is_mobile,
+        'is_bot': is_bot,
     }

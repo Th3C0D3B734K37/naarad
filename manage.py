@@ -2,6 +2,10 @@
 """
 Management script for Naarad.
 Handles database initialization, migrations, and other admin tasks.
+
+NOTE (L-18): This script calls init_db()/migrate_db() directly without
+creating a Flask app context. These functions use their own connections.
+If they ever need Flask's app.config, they must be called within create_app().
 """
 import sys
 import argparse

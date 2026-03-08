@@ -3,7 +3,8 @@
 Naarad Server
 Simple, open-source email tracking for personal use.
 """
-import sys
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 from app import create_app
 from app.config import Config
 from app.database import init_db, migrate_db
@@ -13,8 +14,6 @@ from app.database import init_db, migrate_db
 app = create_app()
 
 def main():
-    print()
-    print("=" * 50)
     print()
     print("=" * 50)
     print("  NAARAD (नारद) - Email Tracker")
