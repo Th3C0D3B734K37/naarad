@@ -4,8 +4,10 @@ A simple, open-source email tracking pixel and link analytics service.
 
 ## Features
 - **Open Tracking**: Invisible 1x1 pixel to track email opens.
-- **Link Tracking**: Redirect service to track link clicks.
+- **Link Tracking**: Secure redirect service to track link clicks with open redirect protection.
+- **Modern Dashboard**: A premium, responsive UI featuring glassmorphism, live search, and dynamic charts.
 - **Detailed Analytics**: Geo-location, Device, Browser, OS, specific timestamps.
+- **Security First**: Timing-safe API key authentication, rate limiting, and robust input validation.
 - **Privacy Focused**: Self-hosted, you own the data.
 
 ## Deployment Options

@@ -21,9 +21,12 @@
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--border);
             border-radius: 8px;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s, border-color 0.3s;
             overflow: hidden;
-            position: relative;
+            position: absolute;
+            left: 100px;
+            /* Absolutely positioned next to the logo */
+            z-index: 20;
         }
 
         .search-wrap.active,
@@ -100,10 +103,13 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 2rem;
+            gap: 1.5rem;
             padding: 1.25rem 0;
             margin-bottom: 1.5rem;
             border-bottom: 1px solid var(--border);
+            position: relative;
+            flex-wrap: wrap;
+            /* Prevent overlap on small screens */
         }
 
         .header-brand {
@@ -111,6 +117,9 @@
             align-items: center;
             gap: 1.25rem;
             flex: 1;
+            min-width: 200px;
+            position: relative;
+            z-index: 5;
         }
 
         #brand-title {
@@ -139,6 +148,10 @@
             align-items: center;
             gap: 0.75rem;
             flex-shrink: 0;
+            position: relative;
+            z-index: 50;
+            /* Ensure it is NEVER covered by the search bar */
+            pointer-events: auto;
         }
 
         /* Action column button */
