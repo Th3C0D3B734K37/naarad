@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 bp_api = Blueprint('api', __name__, url_prefix='/api')
 
-# ── API Rate Limiter (A-02: thread-safe) ────────────────────────────────────
+# ── API Rate Limiter (thread-safe) ────────────────────────────────────
 _api_rate_lock = threading.Lock()
 _api_rate_buckets: dict = defaultdict(list)
 _api_rate_last_evict: float = 0.0
@@ -125,7 +125,7 @@ def stats():
     })
 
 
-# P-01: Select specific columns for list endpoint instead of SELECT *
+# Select specific columns for list endpoint instead of SELECT *
 _TRACKS_LIST_COLUMNS = (
     'track_id, label, country, city, device_type, os, isp, org, '
     'open_count, click_count, first_seen, last_seen, browser'
@@ -264,7 +264,7 @@ def delete_track(track_id):
 @bp_api.route('/track/<track_id>')
 @require_api_key
 def track_detail(track_id):
-    """R-06: Get full details for a specific track including click history.
+    """Get full details for a specific track including click history.
     Fetches fresh data from DB instead of relying on cached table data."""
     P = placeholder()
     track_id = sanitize_id(track_id)
@@ -299,7 +299,7 @@ def export():
     cursor = get_cursor(conn)
 
     if fmt == 'csv':
-        # P-03: Get column names from cursor.description without an extra query
+        # Get column names from cursor.description without an extra query
         cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC LIMIT 0')
         if cursor.description:
             fieldnames = [desc[0] for desc in cursor.description]

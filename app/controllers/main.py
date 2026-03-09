@@ -12,7 +12,7 @@ def dashboard():
 
 @bp_main.route('/robots.txt')
 def robots_txt():
-    """L-08: Prevent search engines from indexing tracking endpoints."""
+    """Prevent search engines from indexing tracking endpoints."""
     return Response(
         "User-agent: *\nDisallow: /\n",
         mimetype='text/plain'

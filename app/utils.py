@@ -101,7 +101,7 @@ def send_webhook(event_type, data):
             }).encode()
             headers = {'Content-Type': 'application/json'}
             if Config.WEBHOOK_SECRET:
-                # S-06: Send HMAC signature, not the raw secret
+                # Send HMAC signature, not the raw secret
                 signature = hmac.new(
                     Config.WEBHOOK_SECRET.encode('utf-8'),
                     payload,

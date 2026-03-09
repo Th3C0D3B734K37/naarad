@@ -4,7 +4,7 @@ naarad Server
 Simple, open-source email tracking for personal use.
 """
 import sys, io
-# D-03: Only wrap stdout if it's not already a TextIOWrapper with UTF-8
+# Only wrap stdout if it's not already a TextIOWrapper with UTF-8
 if hasattr(sys.stdout, 'buffer') and not isinstance(sys.stdout, io.TextIOWrapper):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 elif hasattr(sys.stdout, 'reconfigure'):

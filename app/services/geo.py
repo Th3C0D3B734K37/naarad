@@ -188,7 +188,7 @@ def get_geo_info(ip):
                     ''', (ip, json_data, timestamp))
                 conn.commit()
 
-                # P-02: Probabilistic cleanup (1-in-50 instead of every write)
+                # Probabilistic cleanup (1-in-50 instead of every write)
                 import random
                 if random.randint(1, 50) == 1:
                     _cleanup_expired_cache(conn, cursor, P)
@@ -213,7 +213,7 @@ def get_geo_info(ip):
 
 
 def enrich_track_async(app, track_id, ip):
-    """R-01: Enrich a track record with geo data in a background thread.
+    """Enrich a track record with geo data in a background thread.
     
     Called after the pixel/click response is already sent.
     Used only when the track was created without geo data.

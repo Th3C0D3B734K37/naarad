@@ -1,4 +1,4 @@
-/* S-05: Styles moved from inline <style> block in dashboard.html */
+/* Styles moved from inline <style> block in dashboard.html */
 
 /* ── Header / Brand ──────────────────────────────────────────────────────── */
 .header-main {
@@ -55,7 +55,7 @@
 }
 
 
-/* ── Search (U-01: fixed — use relative positioning instead of absolute) ── */
+/* ── Search (fixed — use relative positioning instead of absolute) ── */
 .search-wrap {
     display: flex;
     align-items: center;
@@ -66,7 +66,7 @@
     border-radius: 8px;
     transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s, border-color 0.3s;
     overflow: hidden;
-    /* U-01: Removed position:absolute to prevent overlapping actions on medium screens */
+    /* Removed position:absolute to prevent overlapping actions on medium screens */
     position: relative;
     flex-shrink: 0;
     z-index: 20;

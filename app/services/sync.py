@@ -18,9 +18,9 @@ log = logging.getLogger(__name__)
 
 # Track the background thread to avoid duplicate spawns
 _sync_thread = None
-_sync_lock = threading.Lock()  # M-01: Prevent multi-worker races
+_sync_lock = threading.Lock()  # Prevent multi-worker races
 
-# C-01: Whitelisted column names to prevent SQL injection from remote data
+# Whitelisted column names to prevent SQL injection from remote data
 _ALLOWED_TRACK_COLS = frozenset([
     'id', 'timestamp', 'track_id', 'campaign_id', 'label',
     'sender', 'recipient', 'subject', 'sent_at',
@@ -42,7 +42,7 @@ _ALLOWED_CLICK_COLS = frozenset([
 
 
 def _filter_keys(record, allowed_cols):
-    """Return a new dict with only whitelisted keys (C-01: prevent SQL injection)."""
+    """Return a new dict with only whitelisted keys (prevent SQL injection)."""
     return {k: v for k, v in record.items() if k in allowed_cols}
 
 
@@ -79,7 +79,7 @@ def _sync_loop(app_context_func):
                     # 1. Ask remote for all records newer than our newest record
                     last_seen = _get_max_timestamp(conn, cursor, 'tracks', 'last_seen')
                     last_click = _get_max_timestamp(conn, cursor, 'clicks', 'timestamp')
-                    # R-04: Use datetime parsing for comparison instead of string
+                    # Use datetime parsing for comparison instead of string
                     try:
                         dt_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
                         dt_click = datetime.fromisoformat(last_click.replace('Z', '+00:00'))
@@ -106,13 +106,13 @@ def _sync_loop(app_context_func):
                     # 3. Merge data locally via safe upsert
                     is_postgres = bool(Config.DATABASE_URL)
                     
-                    # H-01: Merge clicks with deduplication check
+                    # Merge clicks with deduplication check
                     if clicks:
                         for click in clicks:
                             safe_click = _filter_keys(click, _ALLOWED_CLICK_COLS)
                             if not safe_click or 'track_id' not in safe_click or 'timestamp' not in safe_click:
                                 continue
-                            # R-05: Dedup on track_id + timestamp + link_id for stronger uniqueness
+                            # Dedup on track_id + timestamp + link_id for stronger uniqueness
                             link_id = safe_click.get('link_id', '')
                             cursor.execute(
                                 f"SELECT id FROM clicks WHERE track_id = {P} AND timestamp = {P} AND link_id = {P}",
@@ -129,7 +129,7 @@ def _sync_loop(app_context_func):
                                 vals
                             )
                     
-                    # H-02: Merge tracks with proper upsert preserving local-only fields
+                    # Merge tracks with proper upsert preserving local-only fields
                     if tracks:
                         for track in tracks:
                             safe_track = _filter_keys(track, _ALLOWED_TRACK_COLS)
@@ -172,7 +172,7 @@ def _sync_loop(app_context_func):
                     
                     # 4. Auto-wipe the remote if configured
                     if Config.SYNC_AUTO_WIPE:
-                        # R-04: Use datetime parsing for reliable comparison
+                        # Use datetime parsing for reliable comparison
                         def _parse_ts(ts_str):
                             try:
                                 return datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
@@ -210,7 +210,7 @@ def _sync_loop(app_context_func):
 def start_sync_worker(app):
     """Start the background sync worker if configured.
     
-    M-01: Uses a lock to ensure only one worker across multiple processes
+    Uses a lock to ensure only one worker across multiple processes
     spawns the sync thread. Also checks PID to detect fork scenarios.
     """
     global _sync_thread

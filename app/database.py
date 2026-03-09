@@ -32,7 +32,7 @@ def _get_pg_pool():
         try:
             _pg_pool = pg_pool.ThreadedConnectionPool(
                 minconn=1, maxconn=10, dsn=Config.DATABASE_URL,
-                connect_timeout=5  # P-04: Avoid indefinite block if Postgres is down
+                connect_timeout=5  # Avoid indefinite block if Postgres is down
             )
             log.info("[DB] PostgreSQL connection pool created (min=1, max=10)")
         except Exception as e:
@@ -81,7 +81,7 @@ def close_db(e=None):
 
 
 # ─── Common column definitions ────────────────────────────────────────────────
-# H-06: This list must include ALL columns that might need to be added to
+# This list must include ALL columns that might need to be added to
 # existing databases via migrate_db(). It should stay in sync with init_db().
 
 _TRACKS_COLUMNS = [
@@ -226,7 +226,7 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_country    ON tracks(country)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_device     ON tracks(device_type)')
 
-        # D-01: Schema versioning to prevent redundant migrations
+        # Schema versioning to prevent redundant migrations
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY
@@ -336,7 +336,7 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_country     ON tracks(country)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_device      ON tracks(device_type)')
 
-        # D-01: Schema versioning to prevent redundant migrations
+        # Schema versioning to prevent redundant migrations
         conn.execute('''
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY
@@ -352,14 +352,14 @@ def init_db():
 def migrate_db():
     """Add new columns to existing database if they don't exist.
     
-    H-06: _TRACKS_COLUMNS now lists ALL columns to ensure schema parity
+    _TRACKS_COLUMNS now lists ALL columns to ensure schema parity
     between fresh installs and migrated databases.
     """
     if USE_POSTGRES:
         conn = psycopg2.connect(Config.DATABASE_URL)
         cursor = conn.cursor()
 
-        # D-01: Check schema version first
+        # Check schema version first
         cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
         row = cursor.fetchone()
         current_version = row[0] if row else 0
@@ -405,7 +405,7 @@ def migrate_db():
         conn = sqlite3.connect(Config.DB_FILE)
         cursor = conn.cursor()
 
-        # D-01: Check schema version first
+        # Check schema version first
         try:
             cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
             row = cursor.fetchone()

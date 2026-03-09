@@ -22,7 +22,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # S-04: Trust proxy headers if we're behind a reverse proxy
+    # Trust proxy headers if we're behind a reverse proxy
     proxy_count = Config.TRUSTED_PROXY_COUNT
     if proxy_count > 0:
         from werkzeug.middleware.proxy_fix import ProxyFix
@@ -62,7 +62,7 @@ def create_app():
     # ── Security Headers (CSP, CSRF-adjacent) ────────────────────────────
     @app.after_request
     def add_security_headers(response):
-        # L-10: Content-Security-Policy
+        # Content-Security-Policy
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self'; "
@@ -76,7 +76,7 @@ def create_app():
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
-        # S-03: HSTS in production to enforce HTTPS
+        # HSTS in production to enforce HTTPS
         if not Config.DEBUG:
             response.headers['Strict-Transport-Security'] = (
                 'max-age=31536000; includeSubDomains'

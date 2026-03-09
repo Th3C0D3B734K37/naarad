@@ -114,7 +114,7 @@ function showError(message) {
     });
 }
 
-// U-03: Show a prominent auth prompt instead of a generic error
+// Show a prominent auth prompt instead of a generic error
 function showAuthPrompt() {
     const tbody = document.getElementById('tracks');
     if (tbody) tbody.innerHTML = `
@@ -161,7 +161,7 @@ async function load() {
         if (!statsRes.ok || !tracksRes.ok) {
             const status = !statsRes.ok ? statsRes.status : tracksRes.status;
             if (status === 401) {
-                showAuthPrompt(); // U-03: Better 401 UX
+                showAuthPrompt(); // Better 401 UX
             } else {
                 showError(`Server error (${status}). Check the console.`);
             }
@@ -309,7 +309,7 @@ document.getElementById('tracks').addEventListener('click', e => {
     }
 });
 
-// U-04: Keyboard support for table rows
+// Keyboard support for table rows
 document.getElementById('tracks').addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') {
         const row = e.target.closest('tr[data-track-id]');
@@ -339,9 +339,9 @@ function timeAgo(date) {
     return Math.floor(months / 12) + 'y ago';
 }
 
-// ── Detail Drawer (R-06: Fetch from API) ──────────────────────────────────
+// ── Detail Drawer (Fetch from API) ──────────────────────────────────
 async function openDetail(id) {
-    // R-06: Always fetch fresh data from the API instead of relying on cache
+    // Always fetch fresh data from the API instead of relying on cache
     document.getElementById('modal-content').innerHTML = '<div class="empty">Loading…</div>';
     document.getElementById('modal').style.display = 'flex';
 
@@ -533,7 +533,7 @@ let _deleteCloseMain = false;
 function confirmDelete(id, closeMain = false) {
     _deleteId = id;
     _deleteCloseMain = closeMain;
-    // U-05: Truncate long IDs for display
+    // Truncate long IDs for display
     const displayId = id.length > 30 ? id.slice(0, 27) + '...' : id;
     document.getElementById('confirm-msg').textContent =
         `Permanently delete pixel "${displayId}" and all its history?`;
@@ -586,7 +586,7 @@ function resetCreateModal() {
     document.getElementById('create-step-1').style.display = 'block';
     document.getElementById('create-step-2').style.display = 'none';
     document.getElementById('new-label').value = '';
-    // U-02: Clear any error styling
+    // Clear any error styling
     const idInput = document.getElementById('new-id');
     idInput.style.borderColor = '';
     generateRandomId();
@@ -614,7 +614,7 @@ async function submitCreateTrack() {
         });
         const data = await res.json();
         if (!res.ok || data.error) {
-            // U-02: Highlight the ID input on duplicate error
+            // Highlight the ID input on duplicate error
             if (data.error && data.error.includes('already exists')) {
                 idInput.style.borderColor = '#ef4444';
                 idInput.focus();
@@ -625,7 +625,7 @@ async function submitCreateTrack() {
             return;
         }
 
-        // U-02: Clear error styling on success
+        // Clear error styling on success
         idInput.style.borderColor = '';
 
         document.getElementById('create-step-1').style.display = 'none';

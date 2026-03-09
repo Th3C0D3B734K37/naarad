@@ -27,7 +27,7 @@ PIXEL = (
     b'\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
 )
 
-# ── In-memory rate limiter (A-02: thread-safe) ─────────────────────────────
+# ── In-memory rate limiter (thread-safe) ─────────────────────────────
 _rate_lock = threading.Lock()
 _rate_buckets: dict = defaultdict(list)  # ip -> [timestamps]
 _rate_last_evict: float = 0.0
@@ -111,7 +111,7 @@ def favicon():
 def track_open(track_id=None):
     """Track email open with maximum data capture.
     
-    R-01: Geo lookup is done synchronously from cache only (fast path),
+    Geo lookup is done synchronously from cache only (fast path),
     with async enrichment for cache misses. The pixel is ALWAYS returned
     immediately to avoid blocking email clients.
     
@@ -136,7 +136,7 @@ def track_open(track_id=None):
     # PII is no longer accepted from query params (C-06).
     sender = recipient = subject = sent_at = None
 
-    # R-01: Use geo cache for fast path — full lookup is async
+    # Use geo cache for fast path — full lookup is async
     geo     = get_geo_info(ip)
     ua      = request.headers.get('User-Agent', '')
     ua_info = parse_user_agent(ua)
@@ -189,7 +189,7 @@ def track_open(track_id=None):
             )
 
         conn.commit()
-        # T-02: Log successful tracking event
+        # Log successful tracking event
         log.info("[TRACK] Open recorded: track_id=%s ip=%s country=%s", track_id, ip[:10] + '***', geo.get('country', '?'))
     except Exception as e:
         log.error("[TRACK] DB error recording open for track_id=%s: %s", track_id, e)
@@ -292,7 +292,7 @@ def track_click(track_id, target_url):
             )
 
         conn.commit()
-        # T-02: Log successful click event
+        # Log successful click event
         log.info("[CLICK] Click recorded: track_id=%s url=%s ip=%s", track_id, safe_url[:60], ip[:10] + '***')
     except Exception as e:
         log.error("[CLICK] DB error for track_id=%s: %s", track_id, e)
