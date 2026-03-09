@@ -1,6 +1,6 @@
 # Setup Guide
 
-Installation and deployment instructions for Naarad.
+Installation and deployment instructions for naarad.
 
 **Related Docs:**
 - [USAGE.md](USAGE.md) - How to use tracking pixels

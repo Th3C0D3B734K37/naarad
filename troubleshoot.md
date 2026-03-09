@@ -1,4 +1,4 @@
-# Troubleshooting Naarad
+# Troubleshooting naarad
 
 ## Common Issues
 

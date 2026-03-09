@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Management script for Naarad.
+Management script for naarad.
 Handles database initialization, migrations, and other admin tasks.
 
 NOTE (L-18): This script calls init_db()/migrate_db() directly without
@@ -33,7 +33,7 @@ def migrate():
         sys.exit(1)
 
 def main():
-    parser = argparse.ArgumentParser(description='Naarad Management Script')
+    parser = argparse.ArgumentParser(description='naarad Management Script')
     parser.add_argument('command', choices=['init', 'migrate', 'init_all'], 
                         help='Command to run (init_all runs init then migrate)')
     

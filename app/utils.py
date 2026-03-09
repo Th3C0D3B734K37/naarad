@@ -1,5 +1,5 @@
 """
-Naarad - Utility Functions
+naarad - Utility Functions
 """
 import re
 import hmac
@@ -101,7 +101,13 @@ def send_webhook(event_type, data):
             }).encode()
             headers = {'Content-Type': 'application/json'}
             if Config.WEBHOOK_SECRET:
-                headers['X-Webhook-Secret'] = Config.WEBHOOK_SECRET
+                # S-06: Send HMAC signature, not the raw secret
+                signature = hmac.new(
+                    Config.WEBHOOK_SECRET.encode('utf-8'),
+                    payload,
+                    hashlib.sha256
+                ).hexdigest()
+                headers['X-Webhook-Signature'] = f'sha256={signature}'
             req = urllib.request.Request(
                 Config.WEBHOOK_URL, data=payload, headers=headers
             )

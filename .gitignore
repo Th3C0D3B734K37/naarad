@@ -82,6 +82,9 @@ temp/
 pixels/
 exports/
 *.csv
+export.csv
+e2e_pixel.png
+pixel_test.png
 
 # ===================
 # Misc

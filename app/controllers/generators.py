@@ -1,5 +1,5 @@
 """
-Naarad - Pixel Generator Controller
+naarad - Pixel Generator Controller
 Generates trackable links and batch colored pixels for testing.
 """
 

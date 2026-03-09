@@ -1,5 +1,5 @@
 """
-Naarad - Background Node Sync Service
+naarad - Background Node Sync Service
 Supports running a local node that pulls data from a remote cloud node.
 """
 
@@ -9,7 +9,7 @@ import json
 import logging
 import threading
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from ..config import Config
 from ..database import get_db, get_cursor, placeholder
 from ..utils import now_iso
@@ -79,7 +79,13 @@ def _sync_loop(app_context_func):
                     # 1. Ask remote for all records newer than our newest record
                     last_seen = _get_max_timestamp(conn, cursor, 'tracks', 'last_seen')
                     last_click = _get_max_timestamp(conn, cursor, 'clicks', 'timestamp')
-                    query_since = max(last_seen, last_click)
+                    # R-04: Use datetime parsing for comparison instead of string
+                    try:
+                        dt_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                        dt_click = datetime.fromisoformat(last_click.replace('Z', '+00:00'))
+                        query_since = last_seen if dt_seen >= dt_click else last_click
+                    except (ValueError, AttributeError):
+                        query_since = max(last_seen, last_click)
                     
                     # 2. Fetch data
                     req = urllib.request.Request(
@@ -106,10 +112,11 @@ def _sync_loop(app_context_func):
                             safe_click = _filter_keys(click, _ALLOWED_CLICK_COLS)
                             if not safe_click or 'track_id' not in safe_click or 'timestamp' not in safe_click:
                                 continue
-                            # Check for duplicate (same track_id + timestamp)
+                            # R-05: Dedup on track_id + timestamp + link_id for stronger uniqueness
+                            link_id = safe_click.get('link_id', '')
                             cursor.execute(
-                                f"SELECT id FROM clicks WHERE track_id = {P} AND timestamp = {P}",
-                                (safe_click['track_id'], safe_click['timestamp'])
+                                f"SELECT id FROM clicks WHERE track_id = {P} AND timestamp = {P} AND link_id = {P}",
+                                (safe_click['track_id'], safe_click['timestamp'], link_id)
                             )
                             if cursor.fetchone():
                                 continue  # Skip duplicate
@@ -165,11 +172,20 @@ def _sync_loop(app_context_func):
                     
                     # 4. Auto-wipe the remote if configured
                     if Config.SYNC_AUTO_WIPE:
-                        new_max_seen = max([t.get('last_seen', '1970') for t in tracks] + ['1970'])
-                        new_max_click = max([c.get('timestamp', '1970') for c in clicks] + ['1970'])
-                        wipe_until = max(new_max_seen, new_max_click)
+                        # R-04: Use datetime parsing for reliable comparison
+                        def _parse_ts(ts_str):
+                            try:
+                                return datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                            except (ValueError, AttributeError):
+                                return datetime(1970, 1, 1, tzinfo=timezone.utc)
                         
-                        if wipe_until != '1970':
+                        track_ts = [_parse_ts(t.get('last_seen', '1970')) for t in tracks]
+                        click_ts = [_parse_ts(c.get('timestamp', '1970')) for c in clicks]
+                        all_ts = track_ts + click_ts
+                        
+                        if all_ts:
+                            max_dt = max(all_ts)
+                            wipe_until = max_dt.isoformat()
                             del_req = urllib.request.Request(
                                 f"{Config.SYNC_REMOTE_URL}/api/sync?until={wipe_until}",
                                 method='DELETE',

@@ -1,11 +1,11 @@
 """
-Naarad - App Package
+naarad - App Package
 """
 import logging
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 
 from .config import Config
-from .database import init_db, close_db
+from .database import close_db
 
 # Configure structured logging for the entire app
 logging.basicConfig(
@@ -21,6 +21,18 @@ def create_app():
     """Create and configure Flask app."""
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    # S-04: Trust proxy headers if we're behind a reverse proxy
+    proxy_count = Config.TRUSTED_PROXY_COUNT
+    if proxy_count > 0:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=proxy_count,
+            x_proto=proxy_count,
+            x_host=proxy_count,
+            x_prefix=proxy_count
+        )
 
     app.teardown_appcontext(close_db)
 
@@ -63,6 +75,12 @@ def create_app():
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
+        # S-03: HSTS in production to enforce HTTPS
+        if not Config.DEBUG:
+            response.headers['Strict-Transport-Security'] = (
+                'max-age=31536000; includeSubDomains'
+            )
         return response
 
     # ── Global Error Handlers ────────────────────────────────────────────

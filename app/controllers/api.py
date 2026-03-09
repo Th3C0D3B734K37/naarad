@@ -1,16 +1,17 @@
 """
-Naarad - API Controller
+naarad - API Controller
 All /api/* endpoints. Auth is required by default (REQUIRE_AUTH=true).
 """
 
 import io
 import csv
 import logging
+import threading
 from collections import defaultdict
 from functools import wraps
 from time import time
 from flask import Blueprint, request, jsonify, Response, abort, stream_with_context
-from ..database import get_db, get_cursor, placeholder
+from ..database import get_db, get_cursor, placeholder, USE_POSTGRES
 from ..config import Config
 from ..utils import sanitize_id, now_iso, safe_str_compare
 
@@ -18,7 +19,8 @@ log = logging.getLogger(__name__)
 
 bp_api = Blueprint('api', __name__, url_prefix='/api')
 
-# ── API Rate Limiter ────────────────────────────────────────────────────────
+# ── API Rate Limiter (A-02: thread-safe) ────────────────────────────────────
+_api_rate_lock = threading.Lock()
 _api_rate_buckets: dict = defaultdict(list)
 _api_rate_last_evict: float = 0.0
 
@@ -31,17 +33,20 @@ def _is_api_rate_limited(ip: str) -> bool:
         return False
     now_ts = time()
     window = 60.0
-    hits = _api_rate_buckets[ip]
-    hits[:] = [t for t in hits if now_ts - t < window]
-    if len(hits) >= limit:
-        return True
-    hits.append(now_ts)
-    # Periodic eviction
-    if now_ts - _api_rate_last_evict > 300.0:
-        _api_rate_last_evict = now_ts
-        stale = [k for k, v in _api_rate_buckets.items() if not v or (now_ts - v[-1]) > window]
-        for k in stale:
-            del _api_rate_buckets[k]
+
+    with _api_rate_lock:
+        hits = _api_rate_buckets[ip]
+        hits[:] = [t for t in hits if now_ts - t < window]
+        if len(hits) >= limit:
+            return True
+        hits.append(now_ts)
+        # Periodic eviction
+        if now_ts - _api_rate_last_evict > 300.0:
+            _api_rate_last_evict = now_ts
+            stale = [k for k, v in _api_rate_buckets.items() if not v or (now_ts - v[-1]) > window]
+            for k in stale:
+                del _api_rate_buckets[k]
+
     return False
 
 
@@ -51,14 +56,14 @@ def require_api_key(f):
     def decorated(*args, **kwargs):
         if not Config.REQUIRE_AUTH:
             return f(*args, **kwargs)
-        # Rate limit API endpoints (L-15)
+        # Rate limit API endpoints
         from ..controllers.tracking import get_client_ip
         ip = get_client_ip()
         if _is_api_rate_limited(ip):
             abort(429)
         # Key must come from header only — query string leaks it into logs
         api_key = request.headers.get('X-API-Key')
-        # H-04: Timing-safe comparison prevents side-channel attacks
+        # Timing-safe comparison prevents side-channel attacks
         if not api_key or not safe_str_compare(api_key, Config.API_KEY):
             return jsonify({'error': 'Unauthorized'}), 401
         return f(*args, **kwargs)
@@ -120,6 +125,13 @@ def stats():
     })
 
 
+# P-01: Select specific columns for list endpoint instead of SELECT *
+_TRACKS_LIST_COLUMNS = (
+    'track_id, label, country, city, device_type, os, isp, org, '
+    'open_count, click_count, first_seen, last_seen, browser'
+)
+
+
 @bp_api.route('/tracks')
 @require_api_key
 def tracks():
@@ -135,7 +147,7 @@ def tracks():
     if q:
         pattern = f'%{q}%'
         cursor.execute(f'''
-            SELECT * FROM tracks
+            SELECT {_TRACKS_LIST_COLUMNS} FROM tracks
             WHERE track_id LIKE {P} OR label LIKE {P} OR recipient LIKE {P} OR subject LIKE {P}
             ORDER BY last_seen DESC LIMIT {P} OFFSET {P}
         ''', (pattern, pattern, pattern, pattern, limit, offset))
@@ -147,7 +159,7 @@ def tracks():
         ''', (pattern, pattern, pattern, pattern))
     else:
         cursor.execute(
-            f'SELECT * FROM tracks ORDER BY last_seen DESC LIMIT {P} OFFSET {P}',
+            f'SELECT {_TRACKS_LIST_COLUMNS} FROM tracks ORDER BY last_seen DESC LIMIT {P} OFFSET {P}',
             (limit, offset)
         )
         items = [dict(r) if hasattr(r, 'keys') else dict(r) for r in cursor.fetchall()]
@@ -213,7 +225,7 @@ def create_track():
 def update_track(track_id):
     """Update track label and metadata."""
     P    = placeholder()
-    track_id = sanitize_id(track_id)  # L-14: Sanitize URL path param
+    track_id = sanitize_id(track_id)
     data  = request.json or {}
     label = data.get('label', '')
 
@@ -234,7 +246,7 @@ def update_track(track_id):
 def delete_track(track_id):
     """Delete a track and all its click history."""
     P = placeholder()
-    track_id = sanitize_id(track_id)  # L-14: Sanitize URL path param
+    track_id = sanitize_id(track_id)
     conn   = get_db()
     cursor = get_cursor(conn)
 
@@ -243,7 +255,6 @@ def delete_track(track_id):
     cursor.execute(f'DELETE FROM clicks WHERE track_id = {P}', (track_id,))
     conn.commit()
 
-    # L-13: Return 404 if nothing was actually deleted
     if tracks_deleted == 0:
         return jsonify({'error': 'Not found'}), 404
 
@@ -253,9 +264,10 @@ def delete_track(track_id):
 @bp_api.route('/track/<track_id>')
 @require_api_key
 def track_detail(track_id):
-    """Get full details for a specific track including click history."""
+    """R-06: Get full details for a specific track including click history.
+    Fetches fresh data from DB instead of relying on cached table data."""
     P = placeholder()
-    track_id = sanitize_id(track_id)  # L-14
+    track_id = sanitize_id(track_id)
     conn   = get_db()
     cursor = get_cursor(conn)
 
@@ -287,22 +299,13 @@ def export():
     cursor = get_cursor(conn)
 
     if fmt == 'csv':
-        # M-07: Stream CSV to avoid loading entire dataset into memory
-        # First get column names
-        cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC LIMIT 1')
-        sample = cursor.fetchone()
-
-        if not sample:
-            # M-09: Return proper empty CSV with standard headers
-            empty_csv = 'id,timestamp,track_id,campaign_id,label\n'
-            return Response(
-                empty_csv,
-                mimetype='text/csv',
-                headers={'Content-Disposition': 'attachment; filename=naarad_export.csv'}
-            )
-
-        fieldnames = list(dict(sample).keys()) if hasattr(sample, 'keys') else \
-            [desc[0] for desc in cursor.description]
+        # P-03: Get column names from cursor.description without an extra query
+        cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC LIMIT 0')
+        if cursor.description:
+            fieldnames = [desc[0] for desc in cursor.description]
+        else:
+            # Fallback: empty DB with no schema info
+            fieldnames = ['id', 'timestamp', 'track_id', 'campaign_id', 'label']
 
         def generate_csv():
             output = io.StringIO()
@@ -312,7 +315,7 @@ def export():
             output.seek(0)
             output.truncate(0)
 
-            # Re-query all rows and stream them
+            # Query all rows and stream them
             inner_cursor = get_cursor(conn)
             inner_cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC')
             batch_size = 100
@@ -337,6 +340,23 @@ def export():
     cursor.execute('SELECT * FROM tracks ORDER BY timestamp DESC')
     items = [dict(r) if hasattr(r, 'keys') else dict(r) for r in cursor.fetchall()]
     return jsonify({'tracks': items})
+
+
+# ── Health Check (A-04) ──────────────────────────────────────────────────────
+
+@bp_api.route('/health')
+def health():
+    """Health check endpoint for load balancers and monitoring.
+    Does NOT require auth so infrastructure can probe it freely."""
+    try:
+        conn = get_db()
+        cursor = get_cursor(conn)
+        cursor.execute('SELECT 1')
+        cursor.fetchone()
+        return jsonify({'status': 'healthy', 'database': 'ok'}), 200
+    except Exception as e:
+        log.error("[HEALTH] Database check failed: %s", e)
+        return jsonify({'status': 'unhealthy', 'database': 'error'}), 503
 
 
 # ── Node Sync (Hybrid Architecture) ──────────────────────────────────────────
@@ -379,7 +399,7 @@ def wipe_sync_data():
     if not until:
         return jsonify({'error': 'Missing until parameter'}), 400
 
-    # M-10: Validate that 'until' is a valid ISO timestamp
+    # Validate that 'until' is a valid ISO timestamp
     from datetime import datetime
     try:
         datetime.fromisoformat(until.replace('Z', '+00:00'))

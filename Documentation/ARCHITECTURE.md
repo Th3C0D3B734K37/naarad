@@ -1,8 +1,8 @@
-# Naarad (नारद) - Architecture
+# naarad (नारद) - Architecture
 
 ## System Overview
 
-Naarad is a modular, lightweight Flask application designed for email tracking. It uses a clean separation of concerns with dedicated packages for controllers, services, and utilities.
+naarad is a modular, lightweight Flask application designed for email tracking. It uses a clean separation of concerns with dedicated packages for controllers, services, and utilities.
 
 ## Directory Structure
 

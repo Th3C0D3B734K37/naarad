@@ -1,5 +1,5 @@
 """
-Naarad - Database Module
+naarad - Database Module
 Supports PostgreSQL (production) and SQLite (local development).
 """
 import os
@@ -31,7 +31,8 @@ def _get_pg_pool():
     if _pg_pool is None and USE_POSTGRES:
         try:
             _pg_pool = pg_pool.ThreadedConnectionPool(
-                minconn=1, maxconn=10, dsn=Config.DATABASE_URL
+                minconn=1, maxconn=10, dsn=Config.DATABASE_URL,
+                connect_timeout=5  # P-04: Avoid indefinite block if Postgres is down
             )
             log.info("[DB] PostgreSQL connection pool created (min=1, max=10)")
         except Exception as e:
@@ -48,7 +49,7 @@ def get_db():
             if pool:
                 g.db = pool.getconn()
             else:
-                g.db = psycopg2.connect(Config.DATABASE_URL)
+                g.db = psycopg2.connect(Config.DATABASE_URL, connect_timeout=5)
         else:
             db_dir = os.path.dirname(Config.DB_FILE)
             if db_dir:
@@ -225,6 +226,14 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_country    ON tracks(country)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_device     ON tracks(device_type)')
 
+        # D-01: Schema versioning to prevent redundant migrations
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
+            )
+        ''')
+        cursor.execute('INSERT INTO schema_version (version) VALUES (1) ON CONFLICT DO NOTHING')
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -327,6 +336,14 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_country     ON tracks(country)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_device      ON tracks(device_type)')
 
+        # D-01: Schema versioning to prevent redundant migrations
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
+            )
+        ''')
+        conn.execute('INSERT OR IGNORE INTO schema_version (version) VALUES (1)')
+
         conn.commit()
         conn.close()
         log.info("[DB] SQLite initialized")
@@ -341,6 +358,20 @@ def migrate_db():
     if USE_POSTGRES:
         conn = psycopg2.connect(Config.DATABASE_URL)
         cursor = conn.cursor()
+
+        # D-01: Check schema version first
+        cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+        row = cursor.fetchone()
+        current_version = row[0] if row else 0
+
+        target_version = 2 # Increment this when adding new columns in the future
+
+        if current_version >= target_version:
+            cursor.close()
+            conn.close()
+            return
+            
+        log.info("[DB] Migrating PostgreSQL database to version %d", target_version)
 
         cursor.execute("""
             SELECT column_name FROM information_schema.columns
@@ -362,12 +393,33 @@ def migrate_db():
                     conn.rollback()
                     log.error("[DB] Failed to add column %s: %s", col_name, e)
 
+        # Update version
+        if current_version < target_version:
+            cursor.execute("INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT DO NOTHING", (target_version,))
+            conn.commit()
+
         cursor.close()
         conn.close()
 
     else:
         conn = sqlite3.connect(Config.DB_FILE)
         cursor = conn.cursor()
+
+        # D-01: Check schema version first
+        try:
+            cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+            row = cursor.fetchone()
+            current_version = row[0] if row else 0
+        except sqlite3.OperationalError:
+            current_version = 0
+
+        target_version = 2
+        
+        if current_version >= target_version:
+            conn.close()
+            return
+
+        log.info("[DB] Migrating SQLite database to version %d", target_version)
 
         cursor.execute("PRAGMA table_info(tracks)")
         existing_cols = {row[1] for row in cursor.fetchall()}
@@ -382,6 +434,12 @@ def migrate_db():
                     conn.commit()
                 except Exception as e:
                     log.error("[DB] Failed to add column %s: %s", col_name, e)
+
+        # Update version
+        if current_version < target_version:
+            conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (?)", (target_version,))
+            conn.commit()
 
         conn.close()
 

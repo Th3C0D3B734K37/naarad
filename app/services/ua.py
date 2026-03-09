@@ -1,20 +1,29 @@
 """
-Naarad - User-Agent Parsing
+naarad - User-Agent Parsing
 """
 
 import re
 
 
-def parse_user_agent(ua):
-    """Parse user agent string for device/browser info."""
-    if not ua:
-        return {
-            'browser': 'Unknown', 'browser_version': '', 'os': 'Unknown',
-            'os_version': '', 'device_type': 'Unknown', 'device_brand': 'Unknown',
-            'is_mobile': False, 'is_bot': False
-        }
+def _get_empty_ua():
+    """Returns a dictionary with default 'Unknown' values for UA parsing."""
+    return {
+        'browser': 'Unknown', 'browser_version': '', 'os': 'Unknown',
+        'os_version': '', 'device_type': 'Unknown', 'device_brand': 'Unknown',
+        'is_mobile': False, 'is_bot': False
+    }
 
-    ua_lower = ua.lower()
+
+def parse_user_agent(ua_string):
+    """
+    Parse a User-Agent string to extract browser, OS, and device type.
+    Returns a dict with: browser, browser_version, os, os_version,
+    device_type, device_brand, is_mobile, is_bot
+    """
+    if not ua_string:
+        return _get_empty_ua()
+
+    ua_lower = ua_string.lower()
 
     # ── Browser Detection ───────────────────────────────────────────────────
     # Order matters: most specific first to avoid misidentification.

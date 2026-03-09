@@ -1,6 +1,6 @@
 # Testing Guide
 
-How to test Naarad locally, on private networks, and over the internet with real email clients.
+How to test naarad locally, on private networks, and over the internet with real email clients.
 
 **Related Docs:**
 - [SETUP.md](SETUP.md) - Server installation

@@ -1,15 +1,16 @@
 """
-Naarad - Tracking Controller
+naarad - Tracking Controller
 Handles pixel open tracking and link click tracking.
 """
 import logging
+import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from time import time
 
-from flask import Blueprint, request, Response, redirect, jsonify
+from flask import Blueprint, request, Response, redirect, jsonify, current_app
 from ..database import get_db, get_cursor, placeholder
-from ..services.geo import get_geo_info
+from ..services.geo import get_geo_info, enrich_track_async
 from ..services.ua import parse_user_agent
 from ..utils import sanitize_id, hash_url, send_webhook, validate_redirect_url, now_iso
 from ..config import Config
@@ -26,9 +27,8 @@ PIXEL = (
     b'\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
 )
 
-# ── In-memory rate limiter ──────────────────────────────────────────────────
-# Tracks hit counts per IP within rolling 60-second windows.
-# Includes periodic eviction to prevent unbounded memory growth.
+# ── In-memory rate limiter (A-02: thread-safe) ─────────────────────────────
+_rate_lock = threading.Lock()
 _rate_buckets: dict = defaultdict(list)  # ip -> [timestamps]
 _rate_last_evict: float = 0.0
 _RATE_EVICT_INTERVAL = 300.0  # Evict stale IPs every 5 minutes
@@ -43,23 +43,25 @@ def _is_rate_limited(ip: str) -> bool:
         return False
     now_ts = time()
     window = 60.0
-    hits = _rate_buckets[ip]
-    # Prune old hits outside the window
-    hits[:] = [t for t in hits if now_ts - t < window]
-    if len(hits) >= limit:
-        return True
-    hits.append(now_ts)
 
-    # Periodic eviction of stale IPs to prevent memory leak (C-07)
-    if now_ts - _rate_last_evict > _RATE_EVICT_INTERVAL:
-        _rate_last_evict = now_ts
-        stale_ips = [k for k, v in _rate_buckets.items() if not v or (now_ts - v[-1]) > window]
-        for k in stale_ips:
-            del _rate_buckets[k]
-        # Hard cap: if still too many IPs, clear the oldest half
-        if len(_rate_buckets) > _RATE_MAX_IPS:
-            _rate_buckets.clear()
-            log.warning("[RATE] Cleared rate limiter — exceeded %d IP cap", _RATE_MAX_IPS)
+    with _rate_lock:
+        hits = _rate_buckets[ip]
+        # Prune old hits outside the window
+        hits[:] = [t for t in hits if now_ts - t < window]
+        if len(hits) >= limit:
+            return True
+        hits.append(now_ts)
+
+        # Periodic eviction of stale IPs to prevent memory leak
+        if now_ts - _rate_last_evict > _RATE_EVICT_INTERVAL:
+            _rate_last_evict = now_ts
+            stale_ips = [k for k, v in _rate_buckets.items() if not v or (now_ts - v[-1]) > window]
+            for k in stale_ips:
+                del _rate_buckets[k]
+            # Hard cap: if still too many IPs, clear the oldest half
+            if len(_rate_buckets) > _RATE_MAX_IPS:
+                _rate_buckets.clear()
+                log.warning("[RATE] Cleared rate limiter — exceeded %d IP cap", _RATE_MAX_IPS)
 
     return False
 
@@ -67,7 +69,12 @@ def _is_rate_limited(ip: str) -> bool:
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def get_client_ip() -> str:
-    """Get real client IP (supports proxies and CDNs), first wins."""
+    """Get real client IP — with ProxyFix applied, request.remote_addr is already correct.
+    Falls back to forwarded headers only when ProxyFix is not in use (TRUSTED_PROXY_COUNT=0)."""
+    if Config.TRUSTED_PROXY_COUNT > 0:
+        # ProxyFix has already resolved the real IP into remote_addr
+        return request.remote_addr or ''
+    # Direct connection or no proxy configured — check headers manually
     for header in ['CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-For']:
         ip = request.headers.get(header)
         if ip:
@@ -104,6 +111,10 @@ def favicon():
 def track_open(track_id=None):
     """Track email open with maximum data capture.
     
+    R-01: Geo lookup is done synchronously from cache only (fast path),
+    with async enrichment for cache misses. The pixel is ALWAYS returned
+    immediately to avoid blocking email clients.
+    
     PII fields (sender, recipient, subject) are NOT accepted via query params
     to avoid leaking them in URLs/logs. Use POST /api/track to pre-register
     metadata before sending the email.
@@ -123,9 +134,9 @@ def track_open(track_id=None):
     campaign_id = request.args.get('c') or request.args.get('campaign')
 
     # PII is no longer accepted from query params (C-06).
-    # Pre-register metadata via POST /api/track before sending the email.
     sender = recipient = subject = sent_at = None
 
+    # R-01: Use geo cache for fast path — full lookup is async
     geo     = get_geo_info(ip)
     ua      = request.headers.get('User-Agent', '')
     ua_info = parse_user_agent(ua)
@@ -178,6 +189,8 @@ def track_open(track_id=None):
             )
 
         conn.commit()
+        # T-02: Log successful tracking event
+        log.info("[TRACK] Open recorded: track_id=%s ip=%s country=%s", track_id, ip[:10] + '***', geo.get('country', '?'))
     except Exception as e:
         log.error("[TRACK] DB error recording open for track_id=%s: %s", track_id, e)
         try:
@@ -279,6 +292,8 @@ def track_click(track_id, target_url):
             )
 
         conn.commit()
+        # T-02: Log successful click event
+        log.info("[CLICK] Click recorded: track_id=%s url=%s ip=%s", track_id, safe_url[:60], ip[:10] + '***')
     except Exception as e:
         log.error("[CLICK] DB error for track_id=%s: %s", track_id, e)
         try:

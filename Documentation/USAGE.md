@@ -1,6 +1,6 @@
-# Naarad (नारद) - User Guide
+# naarad (नारद) - User Guide
 
-This guide covers how to use Naarad for email tracking.
+This guide covers how to use naarad for email tracking.
 
 **Related Docs:**
 - [SETUP.md](SETUP.md) - Installation & deployment
@@ -11,11 +11,11 @@ This guide covers how to use Naarad for email tracking.
 
 ## How Tracking Works
 
-Naarad works by serving a tiny, invisible image (1x1 pixel) from your server:
+naarad works by serving a tiny, invisible image (1x1 pixel) from your server:
 
 1. You embed the image tag in an email
 2. When the recipient opens the email, their mail client requests the image
-3. Naarad records the request details and returns the invisible pixel
+3. naarad records the request details and returns the invisible pixel
 4. You see the event in your dashboard
 
 ---

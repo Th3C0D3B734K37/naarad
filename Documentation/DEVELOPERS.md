@@ -1,6 +1,6 @@
 # Developer Guide
 
-Technical documentation for contributors who want to understand, modify, or extend Naarad.
+Technical documentation for contributors who want to understand, modify, or extend naarad.
 
 **Related Docs:**
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Project structure overview
@@ -13,7 +13,7 @@ Technical documentation for contributors who want to understand, modify, or exte
 
 ### Application Factory Pattern
 
-Naarad uses Flask's application factory pattern in `app/__init__.py`:
+naarad uses Flask's application factory pattern in `app/__init__.py`:
 
 ```python
 def create_app():
