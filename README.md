@@ -21,19 +21,30 @@ python server.py                 # http://localhost:8080
 
 Set `DEBUG=true` if you want auto-generated ephemeral keys (printed in the console).
 
-## Deployment
+## Documentation & Wiki
+
+For comprehensive guides on setup, deployment, development, testing, and more, please reference our official Wiki (located in the `docs` folder):
+
+- 🏠 **[Wiki Home](docs/Home.md)**
+- 🚀 **[Setup Guide](docs/Setup.md)**: Local installation, requirements, and environment variables.
+- 🌍 **[Deployment Guide](docs/Deployment.md)**: How and where to deploy naarad (Render, Railway, VPS), DB backups, scaling, and maintenance.
+- 🛠️ **[Architecture & Development](docs/Development.md)**: Frontend/Backend codebase overview, logic flow, and contribution guide.
+- 🧪 **[Testing Guide](docs/Testing.md)**: Testing across email clients, localhost networking, and ngrok.
+- 🚑 **[Troubleshooting](docs/Troubleshooting.md)**: Fixes for common errors, port issues, and email caching.
+
+## Deployment Overview
+
+For a detailed walkthrough, see the **[Deployment Guide](docs/Deployment.md)**.
 
 ### Local / LAN
-1. Follow Quick Start above.
+1. Follow the Quick Start above.
 2. Server binds to `0.0.0.0:8080` by default. Open `http://<YOUR_IP>:8080` from any device on your network.
 
-### Production (Railway / Render / Fly.io)
-1. Push this repo to GitHub and connect it to your PaaS.
-2. Add a **PostgreSQL** service and set its `DATABASE_URL`.
-3. **Set required env vars** (the app refuses to start without them in production):
-   - `SECRET_KEY` — any random string (e.g. `openssl rand -hex 32`)
-   - `API_KEY` — authenticates dashboard and API calls
-4. Deploy. The `Procfile` runs migrations automatically on every deploy.
+### Production (Railway / Render / VPS)
+1. Push this repository to GitHub and connect it to your PaaS (Platform as a Service).
+2. Add a **PostgreSQL** or **MySQL** database for production stability.
+3. Configure the **Environment Variables** (check [Setup.md](docs/Setup.md) for a full list). CRITICAL: `SECRET_KEY` and `API_KEY`.
+4. Deploy. The `Procfile` and backend logic handle the auto-migrations upon launch.
 
 ## Configuration
 
@@ -78,4 +89,4 @@ Auth = `X-API-Key` header required.
 
 ## Troubleshooting
 
-See [troubleshoot.md](troubleshoot.md) for common issues.
+See **[docs/Troubleshooting.md](docs/Troubleshooting.md)** for solutions to common issues (e.g., port conflicts, 401 Unauthorized, database locking, or pixel caching in Gmail).
