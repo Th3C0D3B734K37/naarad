@@ -21,19 +21,36 @@ bp_gen = Blueprint('generators', __name__, url_prefix='/api/gen')
 @bp_gen.route('/link', methods=['POST'])
 @require_api_key
 def generate_link():
-    """Generate a trackable pixel URL and click-through link."""
-    data     = request.json or {}
-    track_id = sanitize_id(data.get('track_id', 'unknown'))
+    """Generate a trackable pixel URL and click-through link.
+    
+    Accepts optional email metadata (sender, recipient, subject, sent_at)
+    to embed in the pixel URL so track_open() captures it automatically.
+    """
+    data       = request.json or {}
+    track_id   = sanitize_id(data.get('track_id', 'unknown'))
     target_url = data.get('url')
 
     if not target_url:
         return jsonify({'error': 'URL required'}), 400
 
+    # Build metadata query params for the pixel URL
+    meta_params = []
+    for key in ('sender', 'recipient', 'subject', 'sent_at', 'campaign'):
+        val = data.get(key)
+        if val:
+            meta_params.append(f"{key}={quote(str(val), safe='@.')}")
+    meta_qs = ('&' + '&'.join(meta_params)) if meta_params else ''
+
     encoded  = quote(target_url, safe='')
     base_url = request.host_url.rstrip('/')
+    pixel_url = f"{base_url}/track?id={track_id}{meta_qs}"
+    click_url = f"{base_url}/click/{track_id}/{encoded}"
+    if meta_params:
+        click_url += '?' + '&'.join(meta_params)
+
     return jsonify({
-        'pixel_url': f"{base_url}/track?id={track_id}",
-        'click_url': f"{base_url}/click/{track_id}/{encoded}",
+        'pixel_url': pixel_url,
+        'click_url': click_url,
         'track_id':  track_id,
     })
 

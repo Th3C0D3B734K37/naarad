@@ -185,6 +185,7 @@ def create_track():
     This is the correct place to attach PII metadata (sender, recipient, subject)
     rather than in pixel query params.
     """
+    from urllib.parse import quote
     P = placeholder()
     data     = request.json or {}
     track_id = sanitize_id(data.get('track_id', ''))
@@ -217,7 +218,27 @@ def create_track():
          timestamp, timestamp, 0, 0)
     )
     conn.commit()
-    return jsonify({'track_id': track_id, 'label': label})
+
+    # Build pixel URL with embedded metadata so track_open() captures it
+    base_url = request.host_url.rstrip('/')
+    pixel_url = f"{base_url}/track?id={track_id}"
+    meta_parts = []
+    if sender:
+        meta_parts.append(f"sender={quote(sender, safe='@.')}")
+    if recipient:
+        meta_parts.append(f"recipient={quote(recipient, safe='@.')}")
+    if subject:
+        meta_parts.append(f"subject={quote(subject, safe='')}")
+    if sent_at:
+        meta_parts.append(f"sent_at={quote(sent_at, safe='')}")
+    if meta_parts:
+        pixel_url += '&' + '&'.join(meta_parts)
+
+    return jsonify({
+        'track_id': track_id,
+        'label': label,
+        'pixel_url': pixel_url,
+    })
 
 
 @bp_api.route('/track/<track_id>', methods=['PUT'])

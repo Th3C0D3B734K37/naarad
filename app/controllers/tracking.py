@@ -228,20 +228,93 @@ def track_open(track_id=None):
         existing = cursor.fetchone()
 
         if existing:
-            # ── Repeat open ──────────────────────────────────────
+            # ── Repeat open (or first real open on a pre-registered track) ──
             existing_id    = existing[0] if isinstance(existing, (list, tuple)) else existing['id']
             existing_count = existing[1] if isinstance(existing, (list, tuple)) else existing['open_count']
 
             is_forward = _detect_forward(cursor, P, track_id, ip, geo, ua_info)
 
+            # Use COALESCE so pre-registered tracks get their NULL fields
+            # filled on the first real pixel open, without overwriting
+            # data that already exists from a previous real open.
             cursor.execute(
                 f'''UPDATE tracks
-                    SET open_count   = open_count + 1,
-                        last_seen    = {P},
-                        is_repeat    = 1,
-                        forward_count = forward_count + {1 if is_forward else 0}
+                    SET open_count    = open_count + 1,
+                        last_seen     = {P},
+                        is_repeat     = CASE WHEN open_count > 0 THEN 1 ELSE 0 END,
+                        forward_count = COALESCE(forward_count, 0) + {1 if is_forward else 0},
+                        -- Timestamp detail (fill if first real open)
+                        open_date     = COALESCE(open_date, {P}),
+                        open_time     = COALESCE(open_time, {P}),
+                        day_of_week   = COALESCE(day_of_week, {P}),
+                        unix_ms       = COALESCE(unix_ms, {P}),
+                        -- Network / geo
+                        ip_address    = COALESCE(ip_address, {P}),
+                        country       = COALESCE(NULLIF(country, 'Local'), NULLIF(country, 'Unknown'), {P}),
+                        region        = COALESCE(NULLIF(region,  'Local'), NULLIF(region,  'Unknown'), {P}),
+                        city          = COALESCE(NULLIF(city,    'Local'), NULLIF(city,    'Unknown'), {P}),
+                        latitude      = CASE WHEN latitude IS NULL OR latitude = 0 THEN {P} ELSE latitude END,
+                        longitude     = CASE WHEN longitude IS NULL OR longitude = 0 THEN {P} ELSE longitude END,
+                        timezone      = COALESCE(NULLIF(timezone, 'Local'), NULLIF(timezone, 'Unknown'), {P}),
+                        isp           = COALESCE(NULLIF(isp,      'Local'), NULLIF(isp,      'Unknown'), {P}),
+                        org           = COALESCE(NULLIF(org, ''), {P}),
+                        asn           = COALESCE(NULLIF(asn, ''), {P}),
+                        -- Device / UA
+                        user_agent    = COALESCE(user_agent, {P}),
+                        browser       = COALESCE(NULLIF(browser, 'Unknown'), {P}),
+                        browser_version = COALESCE(browser_version, {P}),
+                        os            = COALESCE(NULLIF(os, 'Unknown'), {P}),
+                        os_version    = COALESCE(os_version, {P}),
+                        device_type   = COALESCE(NULLIF(device_type, 'Unknown'), {P}),
+                        device_brand  = COALESCE(NULLIF(device_brand, 'Unknown'), {P}),
+                        is_mobile     = COALESCE(is_mobile, {P}),
+                        is_bot        = COALESCE(is_bot, {P}),
+                        -- Headers
+                        referer       = COALESCE(NULLIF(referer, 'Direct'), {P}),
+                        accept_language = COALESCE(NULLIF(accept_language, ''), {P}),
+                        accept_encoding = COALESCE(NULLIF(accept_encoding, ''), {P}),
+                        accept_header   = COALESCE(NULLIF(accept_header, ''), {P}),
+                        connection_type = COALESCE(NULLIF(connection_type, ''), {P}),
+                        do_not_track    = COALESCE(NULLIF(do_not_track, ''), {P}),
+                        cache_control   = COALESCE(NULLIF(cache_control, ''), {P}),
+                        sec_ch_ua           = COALESCE(NULLIF(sec_ch_ua, ''), {P}),
+                        sec_ch_ua_mobile    = COALESCE(NULLIF(sec_ch_ua_mobile, ''), {P}),
+                        sec_ch_ua_platform  = COALESCE(NULLIF(sec_ch_ua_platform, ''), {P}),
+                        -- Email metadata (fill if not pre-registered)
+                        sender        = COALESCE(NULLIF(sender, ''), {P}),
+                        recipient     = COALESCE(NULLIF(recipient, ''), {P}),
+                        subject       = COALESCE(NULLIF(subject, ''), {P}),
+                        sent_at       = COALESCE(NULLIF(sent_at, ''), {P}),
+                        campaign_id   = COALESCE(campaign_id, {P})
                     WHERE track_id = {P}''',
-                (ts['iso'], track_id)
+                (
+                    ts['iso'],
+                    # Timestamp detail
+                    ts['date'], ts['time'], ts['day_of_week'], ts['unix_ms'],
+                    # Network / geo
+                    ip,
+                    geo['country'], geo['region'], geo['city'],
+                    geo['lat'], geo['lon'],
+                    geo['timezone'], geo['isp'],
+                    geo.get('org', ''), geo.get('asn', ''),
+                    # Device / UA
+                    ua,
+                    ua_info['browser'], ua_info['browser_version'],
+                    ua_info['os'], ua_info['os_version'],
+                    ua_info['device_type'], ua_info['device_brand'],
+                    ua_info['is_mobile'], ua_info['is_bot'],
+                    # Headers
+                    headers['referer'], headers['accept_language'],
+                    headers['accept_encoding'], headers['accept_header'],
+                    headers['connection_type'], headers['do_not_track'],
+                    headers['cache_control'], headers['sec_ch_ua'],
+                    headers['sec_ch_ua_mobile'], headers['sec_ch_ua_platform'],
+                    # Email metadata
+                    sender, recipient, subject, sent_at,
+                    campaign_id,
+                    # WHERE
+                    track_id,
+                )
             )
 
             # Record individual open event in open_events table
@@ -537,9 +610,39 @@ def track_click(track_id, target_url):
             cursor.execute(
                 f'''UPDATE tracks
                     SET click_count = click_count + 1,
-                        last_seen   = {P}
+                        last_seen   = {P},
+                        -- Network / geo
+                        ip_address    = COALESCE(ip_address, {P}),
+                        country       = COALESCE(NULLIF(country, 'Local'), NULLIF(country, 'Unknown'), {P}),
+                        region        = COALESCE(NULLIF(region,  'Local'), NULLIF(region,  'Unknown'), {P}),
+                        city          = COALESCE(NULLIF(city,    'Local'), NULLIF(city,    'Unknown'), {P}),
+                        latitude      = CASE WHEN latitude IS NULL OR latitude = 0 THEN {P} ELSE latitude END,
+                        longitude     = CASE WHEN longitude IS NULL OR longitude = 0 THEN {P} ELSE longitude END,
+                        timezone      = COALESCE(NULLIF(timezone, 'Local'), NULLIF(timezone, 'Unknown'), {P}),
+                        isp           = COALESCE(NULLIF(isp,      'Local'), NULLIF(isp,      'Unknown'), {P}),
+                        org           = COALESCE(NULLIF(org, ''), {P}),
+                        asn           = COALESCE(NULLIF(asn, ''), {P}),
+                        -- Device / UA
+                        user_agent    = COALESCE(user_agent, {P}),
+                        browser       = COALESCE(NULLIF(browser, 'Unknown'), {P}),
+                        browser_version = COALESCE(browser_version, {P}),
+                        os            = COALESCE(NULLIF(os, 'Unknown'), {P}),
+                        os_version    = COALESCE(os_version, {P}),
+                        device_type   = COALESCE(NULLIF(device_type, 'Unknown'), {P}),
+                        device_brand  = COALESCE(NULLIF(device_brand, 'Unknown'), {P}),
+                        is_mobile     = COALESCE(is_mobile, {P}),
+                        is_bot        = COALESCE(is_bot, {P})
                     WHERE track_id  = {P}''',
-                (ts['iso'], track_id)
+                (
+                    ts['iso'],
+                    ip, geo['country'], geo['region'], geo['city'],
+                    geo['lat'], geo['lon'], geo['timezone'], geo['isp'],
+                    geo.get('org', ''), geo.get('asn', ''),
+                    ua, ua_info['browser'], ua_info['browser_version'],
+                    ua_info['os'], ua_info['os_version'], ua_info['device_type'],
+                    ua_info['device_brand'], ua_info['is_mobile'], ua_info['is_bot'],
+                    track_id
+                )
             )
 
         conn.commit()

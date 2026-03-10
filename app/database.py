@@ -85,6 +85,14 @@ def close_db(e=None):
 # existing databases via migrate_db(). It should stay in sync with init_db().
 
 _TRACKS_COLUMNS = [
+    ('open_date', 'TEXT'),
+    ('open_time', 'TEXT'),
+    ('day_of_week', 'TEXT'),
+    ('unix_ms', 'INTEGER'),
+    ('forward_count', 'INTEGER DEFAULT 0'),
+    ('is_repeat', 'INTEGER DEFAULT 0'),
+    ('is_forward', 'INTEGER DEFAULT 0'),
+    ('fingerprint', 'TEXT'),
     ('campaign_id',        'TEXT'),
     ('label',              'TEXT'),
     ('sender',             'TEXT'),
@@ -126,6 +134,18 @@ _TRACKS_COLUMNS = [
     ('last_seen',          'TEXT'),
 ]
 
+_CLICKS_COLUMNS = [
+    ('click_date', 'TEXT'),
+    ('click_time', 'TEXT'),
+    ('day_of_week', 'TEXT'),
+    ('unix_ms', 'INTEGER'),
+    ('fingerprint', 'TEXT'),
+    ('sender',      'TEXT'),
+    ('recipient',   'TEXT'),
+    ('subject',     'TEXT'),
+    ('sent_at',     'TEXT'),
+]
+
 
 def init_db():
     """
@@ -140,10 +160,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS tracks (
                 id               SERIAL PRIMARY KEY,
                 timestamp        TEXT NOT NULL,
-                track_id         TEXT NOT NULL,
+                open_date        TEXT,
+                open_time        TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+                track_id         TEXT NOT NULL UNIQUE,
                 campaign_id      TEXT,
                 label            TEXT,
-
                 sender           TEXT,
                 recipient        TEXT,
                 subject          TEXT,
@@ -182,12 +205,64 @@ def init_db():
                 sec_ch_ua_mobile   TEXT,
                 sec_ch_ua_platform TEXT,
 
-                open_count  INTEGER DEFAULT 0,
-                click_count INTEGER DEFAULT 0,
-                first_seen  TEXT,
-                last_seen   TEXT,
+                open_count      INTEGER DEFAULT 0,
+                click_count     INTEGER DEFAULT 0,
+                forward_count   INTEGER DEFAULT 0,
+                is_repeat       INTEGER DEFAULT 0,
+                is_forward      INTEGER DEFAULT 0,
+
+                first_seen      TEXT,
+                last_seen       TEXT,
 
                 CONSTRAINT uq_track_id UNIQUE (track_id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS open_events (
+                id              SERIAL PRIMARY KEY,
+                timestamp       TEXT NOT NULL,
+                open_date       TEXT,
+                open_time       TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+
+                track_id        TEXT,
+                campaign_id     TEXT,
+
+                sender          TEXT,
+                recipient       TEXT,
+                subject         TEXT,
+                sent_at         TEXT,
+
+                ip_address      TEXT,
+                country         TEXT,
+                region          TEXT,
+                city            TEXT,
+                latitude        REAL,
+                longitude       REAL,
+                timezone        TEXT,
+                isp             TEXT,
+                org             TEXT,
+                asn             TEXT,
+
+                user_agent      TEXT,
+                browser         TEXT,
+                browser_version TEXT,
+                os              TEXT,
+                os_version      TEXT,
+                device_type     TEXT,
+                device_brand    TEXT,
+                is_mobile       BOOLEAN,
+                is_bot          BOOLEAN,
+
+                referer         TEXT,
+                accept_language TEXT,
+
+                is_repeat       INTEGER DEFAULT 0,
+                is_forward      INTEGER DEFAULT 0,
+
+                fingerprint     TEXT
             )
         ''')
 
@@ -195,18 +270,44 @@ def init_db():
             CREATE TABLE IF NOT EXISTS clicks (
                 id          SERIAL PRIMARY KEY,
                 timestamp   TEXT NOT NULL,
+                click_date      TEXT,
+                click_time      TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+
                 track_id    TEXT NOT NULL,
                 campaign_id TEXT,
                 link_id     TEXT NOT NULL,
                 target_url  TEXT NOT NULL,
+
                 ip_address  TEXT,
                 country     TEXT,
+                region          TEXT,
                 city        TEXT,
+                latitude    REAL,
+                longitude   REAL,
+                isp             TEXT,
+                org             TEXT,
+                asn             TEXT,
+
                 user_agent  TEXT,
                 browser     TEXT,
+                browser_version TEXT,
                 os          TEXT,
+                os_version  TEXT,
                 device_type TEXT,
-                referer     TEXT
+                device_brand    TEXT,
+                is_mobile       BOOLEAN,
+                is_bot          BOOLEAN,
+
+                referer     TEXT,
+
+                sender      TEXT,
+                recipient   TEXT,
+                subject     TEXT,
+                sent_at     TEXT,
+
+                fingerprint     TEXT
             )
         ''')
 
@@ -225,6 +326,11 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_clicks_track ON clicks(track_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_country    ON tracks(country)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_device     ON tracks(device_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_open_events_tid   ON open_events(track_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_open_events_date  ON open_events(open_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_open_events_fp    ON open_events(fingerprint)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_clicks_date       ON clicks(click_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_clicks_fp         ON clicks(fingerprint)')
 
         # Schema versioning to prevent redundant migrations
         cursor.execute('''
@@ -253,10 +359,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS tracks (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp        TEXT NOT NULL,
+                open_date        TEXT,
+                open_time        TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
                 track_id         TEXT NOT NULL UNIQUE,
                 campaign_id      TEXT,
                 label            TEXT,
-
                 sender           TEXT,
                 recipient        TEXT,
                 subject          TEXT,
@@ -295,10 +404,62 @@ def init_db():
                 sec_ch_ua_mobile   TEXT,
                 sec_ch_ua_platform TEXT,
 
-                open_count  INTEGER DEFAULT 0,
-                click_count INTEGER DEFAULT 0,
-                first_seen  TEXT,
-                last_seen   TEXT
+                open_count      INTEGER DEFAULT 0,
+                click_count     INTEGER DEFAULT 0,
+                forward_count   INTEGER DEFAULT 0,
+                is_repeat       INTEGER DEFAULT 0,
+                is_forward      INTEGER DEFAULT 0,
+
+                first_seen      TEXT,
+                last_seen       TEXT
+            )
+        ''')
+
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS open_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp       TEXT NOT NULL,
+                open_date       TEXT,
+                open_time       TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+
+                track_id        TEXT,
+                campaign_id     TEXT,
+
+                sender          TEXT,
+                recipient       TEXT,
+                subject         TEXT,
+                sent_at         TEXT,
+
+                ip_address      TEXT,
+                country         TEXT,
+                region          TEXT,
+                city            TEXT,
+                latitude        REAL,
+                longitude       REAL,
+                timezone        TEXT,
+                isp             TEXT,
+                org             TEXT,
+                asn             TEXT,
+
+                user_agent      TEXT,
+                browser         TEXT,
+                browser_version TEXT,
+                os              TEXT,
+                os_version      TEXT,
+                device_type     TEXT,
+                device_brand    TEXT,
+                is_mobile       INTEGER,
+                is_bot          INTEGER,
+
+                referer         TEXT,
+                accept_language TEXT,
+
+                is_repeat       INTEGER DEFAULT 0,
+                is_forward      INTEGER DEFAULT 0,
+
+                fingerprint     TEXT
             )
         ''')
 
@@ -306,18 +467,44 @@ def init_db():
             CREATE TABLE IF NOT EXISTS clicks (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp   TEXT NOT NULL,
+                click_date      TEXT,
+                click_time      TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+
                 track_id    TEXT NOT NULL,
                 campaign_id TEXT,
                 link_id     TEXT NOT NULL,
                 target_url  TEXT NOT NULL,
+
                 ip_address  TEXT,
                 country     TEXT,
+                region          TEXT,
                 city        TEXT,
+                latitude    REAL,
+                longitude   REAL,
+                isp             TEXT,
+                org             TEXT,
+                asn             TEXT,
+
                 user_agent  TEXT,
                 browser     TEXT,
+                browser_version TEXT,
                 os          TEXT,
+                os_version  TEXT,
                 device_type TEXT,
-                referer     TEXT
+                device_brand    TEXT,
+                is_mobile       INTEGER,
+                is_bot          INTEGER,
+
+                referer     TEXT,
+
+                sender      TEXT,
+                recipient   TEXT,
+                subject     TEXT,
+                sent_at     TEXT,
+
+                fingerprint     TEXT
             )
         ''')
 
@@ -393,6 +580,26 @@ def migrate_db():
                     conn.rollback()
                     log.error("[DB] Failed to add column %s: %s", col_name, e)
 
+        # Migrate clicks table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'clicks'
+        """)
+        existing_click_cols = {row[0] for row in cursor.fetchall()}
+
+        for col_name, col_type in _CLICKS_COLUMNS:
+            base_type = col_type.split(' DEFAULT ')[0].strip()
+            if col_name not in existing_click_cols:
+                try:
+                    cursor.execute(
+                        f'ALTER TABLE clicks ADD COLUMN {col_name} {base_type}'
+                    )
+                    log.info("[DB] Added clicks column: %s", col_name)
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    log.error("[DB] Failed to add clicks column %s: %s", col_name, e)
+
         # Update version
         if current_version < target_version:
             cursor.execute("INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT DO NOTHING", (target_version,))
@@ -434,6 +641,21 @@ def migrate_db():
                     conn.commit()
                 except Exception as e:
                     log.error("[DB] Failed to add column %s: %s", col_name, e)
+
+        # Migrate clicks table for SQLite
+        cursor.execute("PRAGMA table_info(clicks)")
+        existing_click_cols = {row[1] for row in cursor.fetchall()}
+
+        for col_name, col_type in _CLICKS_COLUMNS:
+            if col_name not in existing_click_cols:
+                try:
+                    conn.execute(
+                        f'ALTER TABLE clicks ADD COLUMN {col_name} {col_type}'
+                    )
+                    log.info("[DB] Added clicks column: %s", col_name)
+                    conn.commit()
+                except Exception as e:
+                    log.error("[DB] Failed to add clicks column %s: %s", col_name, e)
 
         # Update version
         if current_version < target_version:

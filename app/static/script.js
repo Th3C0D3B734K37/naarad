@@ -586,6 +586,7 @@ function resetCreateModal() {
     document.getElementById('create-step-1').style.display = 'block';
     document.getElementById('create-step-2').style.display = 'none';
     document.getElementById('new-label').value = '';
+    document.getElementById('new-target-url').value = '';
     // Clear any error styling
     const idInput = document.getElementById('new-id');
     idInput.style.borderColor = '';
@@ -632,10 +633,18 @@ async function submitCreateTrack() {
         document.getElementById('create-step-2').style.display = 'block';
 
         const origin = window.location.origin;
+        const targetUrl = document.getElementById('new-target-url').value.trim();
+
         document.getElementById('res-pixel-code').textContent =
             `<img src="${origin}/track?id=${data.track_id}" width="1" height="1" style="display:none" />`;
-        document.getElementById('res-link-code').textContent =
-            `${origin}/click/${data.track_id}/YOUR_URL_HERE`;
+
+        let clickLink = `${origin}/click/${data.track_id}/`;
+        if (targetUrl) {
+            clickLink += encodeURIComponent(targetUrl);
+        } else {
+            clickLink += 'YOUR_URL_HERE';
+        }
+        document.getElementById('res-link-code').textContent = clickLink;
 
         if (pixelUrlEl) pixelUrlEl.textContent = `${origin}/track?id=${data.track_id}`;
 
