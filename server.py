@@ -13,12 +13,16 @@ from app import create_app
 from app.config import Config
 from app.database import init_db, migrate_db
 
-# Initialize DB and App for Production (Gunicorn)
-init_db()
-migrate_db()
+# Create the Flask app. DB init is handled by manage.py init_all (Procfile)
+# or by main() below when running directly in dev mode.
 app = create_app()
 
 def main():
+    # In dev mode (python server.py), init the DB here.
+    # In production, Procfile runs: manage.py init_all && gunicorn server:app
+    init_db()
+    migrate_db()
+
     url = f"http://localhost:{Config.PORT}"
     print()
     print("=" * 56)

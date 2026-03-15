@@ -212,9 +212,7 @@ def init_db():
                 is_forward      INTEGER DEFAULT 0,
 
                 first_seen      TEXT,
-                last_seen       TEXT,
-
-                CONSTRAINT uq_track_id UNIQUE (track_id)
+                last_seen       TEXT
             )
         ''')
 

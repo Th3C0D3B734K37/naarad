@@ -67,7 +67,7 @@ def create_app():
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-            "font-src 'self' https://cdn.jsdelivr.net; "
+            "font-src 'self' https://cdn.jsdelivr.net data:; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
             "frame-ancestors 'none'"
@@ -110,7 +110,16 @@ def create_app():
         return jsonify({'error': 'Internal server error'}), 500
 
     # ── Start Background Sync ────────────────────────────────────────────
+    # Use before_request to start the sync worker AFTER Gunicorn has forked.
+    # Threads created before fork() are NOT inherited by child workers.
     from .services.sync import start_sync_worker
-    start_sync_worker(app)
+    _sync_started = False
+
+    @app.before_request
+    def _ensure_sync_worker():
+        nonlocal _sync_started
+        if not _sync_started:
+            _sync_started = True
+            start_sync_worker(app)
 
     return app
