@@ -549,7 +549,7 @@ def migrate_db():
         row = cursor.fetchone()
         current_version = row[0] if row else 0
 
-        target_version = 2 # Increment this when adding new columns in the future
+        target_version = 3 # Bumped: v3 ensures open_events table exists
 
         if current_version >= target_version:
             cursor.close()
@@ -557,6 +557,53 @@ def migrate_db():
             return
             
         log.info("[DB] Migrating PostgreSQL database to version %d", target_version)
+
+        # Ensure open_events table exists (may be missing on older installs)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS open_events (
+                id              SERIAL PRIMARY KEY,
+                timestamp       TEXT NOT NULL,
+                open_date       TEXT,
+                open_time       TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+                track_id        TEXT,
+                campaign_id     TEXT,
+                sender          TEXT,
+                recipient       TEXT,
+                subject         TEXT,
+                sent_at         TEXT,
+                ip_address      TEXT,
+                country         TEXT,
+                region          TEXT,
+                city            TEXT,
+                latitude        REAL,
+                longitude       REAL,
+                timezone        TEXT,
+                isp             TEXT,
+                org             TEXT,
+                asn             TEXT,
+                user_agent      TEXT,
+                browser         TEXT,
+                browser_version TEXT,
+                os              TEXT,
+                os_version      TEXT,
+                device_type     TEXT,
+                device_brand    TEXT,
+                is_mobile       BOOLEAN,
+                is_bot          BOOLEAN,
+                referer         TEXT,
+                accept_language TEXT,
+                is_repeat       INTEGER DEFAULT 0,
+                is_forward      INTEGER DEFAULT 0,
+                fingerprint     TEXT
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_open_events_tid   ON open_events(track_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_open_events_date  ON open_events(open_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_open_events_fp    ON open_events(fingerprint)')
+        conn.commit()
+        log.info("[DB] Ensured open_events table exists")
 
         cursor.execute("""
             SELECT column_name FROM information_schema.columns
@@ -625,6 +672,50 @@ def migrate_db():
             return
 
         log.info("[DB] Migrating SQLite database to version %d", target_version)
+
+        # Ensure open_events table exists (may be missing on older installs)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS open_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp       TEXT NOT NULL,
+                open_date       TEXT,
+                open_time       TEXT,
+                day_of_week     TEXT,
+                unix_ms         INTEGER,
+                track_id        TEXT,
+                campaign_id     TEXT,
+                sender          TEXT,
+                recipient       TEXT,
+                subject         TEXT,
+                sent_at         TEXT,
+                ip_address      TEXT,
+                country         TEXT,
+                region          TEXT,
+                city            TEXT,
+                latitude        REAL,
+                longitude       REAL,
+                timezone        TEXT,
+                isp             TEXT,
+                org             TEXT,
+                asn             TEXT,
+                user_agent      TEXT,
+                browser         TEXT,
+                browser_version TEXT,
+                os              TEXT,
+                os_version      TEXT,
+                device_type     TEXT,
+                device_brand    TEXT,
+                is_mobile       INTEGER,
+                is_bot          INTEGER,
+                referer         TEXT,
+                accept_language TEXT,
+                is_repeat       INTEGER DEFAULT 0,
+                is_forward      INTEGER DEFAULT 0,
+                fingerprint     TEXT
+            )
+        ''')
+        conn.commit()
+        log.info("[DB] Ensured open_events table exists")
 
         cursor.execute("PRAGMA table_info(tracks)")
         existing_cols = {row[1] for row in cursor.fetchall()}
