@@ -307,7 +307,22 @@ def track_detail(track_id):
     )
     clicks = [dict(r) if hasattr(r, 'keys') else dict(r) for r in cursor.fetchall()]
 
-    return jsonify({'track': track_dict, 'clicks': clicks})
+    # Fetch open events timeline (each individual open with its own data)
+    cursor.execute(
+        f'SELECT * FROM open_events WHERE track_id = {P} ORDER BY timestamp DESC', (track_id,)
+    )
+    opens = [dict(r) if hasattr(r, 'keys') else dict(r) for r in cursor.fetchall()]
+
+    # Build the pixel embed URL
+    base = request.host_url.rstrip('/')
+    pixel_url = f'{base}/track?id={track_id}'
+
+    return jsonify({
+        'track': track_dict,
+        'clicks': clicks,
+        'opens': opens,
+        'pixel_url': pixel_url,
+    })
 
 
 @bp_api.route('/export')

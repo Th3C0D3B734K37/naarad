@@ -352,7 +352,7 @@ async function openDetail(id) {
         const t = data.track;
         if (!t) { showToast('Track not found', 'error'); closeModal(); return; }
 
-        renderDetailContent(t, data.clicks || []);
+        renderDetailContent(t, data.clicks || [], data.opens || [], data.pixel_url || '');
     } catch (e) {
         document.getElementById('modal-content').innerHTML = `
             <div class="error-state">
@@ -363,7 +363,12 @@ async function openDetail(id) {
     }
 }
 
-function renderDetailContent(t, clicks) {
+function _val(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    return String(v);
+}
+
+function renderDetailContent(t, clicks, opens, pixelUrl) {
     const mapLink = (t.latitude && t.longitude)
         ? `<a href="https://maps.google.com/?q=${t.latitude},${t.longitude}" target="_blank"
                style="color:var(--accent); font-size:0.75rem; text-decoration:none; display:inline-flex; align-items:center; gap:3px; margin-top:3px">
@@ -372,72 +377,143 @@ function renderDetailContent(t, clicks) {
              </svg>Open in Maps</a>`
         : '';
 
+    // Build embed HTML
+    const embedHtml = `<img src="${esc(pixelUrl)}" width="1" height="1" style="display:none" alt="" />`;
+
+    // ── Section 1: Pixel Embed Code ─────────────────────────────────
+    const embedSection = pixelUrl ? `
+    <div class="modal-section">
+        <h4 class="section-title">📋 Pixel Embed Code</h4>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <div>
+                <div class="detail-label">Tracking URL</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <code style="flex:1; padding:6px 10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; font-size:0.78rem; word-break:break-all; color:var(--accent);">${esc(pixelUrl)}</code>
+                    <button class="btn" onclick="navigator.clipboard.writeText('${esc(pixelUrl)}');showToast('URL copied!','success')" style="white-space:nowrap; font-size:0.75rem; padding:4px 10px;">Copy</button>
+                </div>
+            </div>
+            <div>
+                <div class="detail-label">HTML Embed (paste in email body)</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <code style="flex:1; padding:6px 10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; font-size:0.75rem; word-break:break-all;">${esc(embedHtml)}</code>
+                    <button class="btn" onclick="navigator.clipboard.writeText(\`${embedHtml.replace(/`/g, '\\`')}\`);showToast('HTML copied!','success')" style="white-space:nowrap; font-size:0.75rem; padding:4px 10px;">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>` : '';
+
+    // ── Section 2: Engagement Stats ─────────────────────────────────
     const sections = [
         {
-            title: 'Identity & Targeting',
+            title: '📊 Engagement',
             items: [
-                { label: 'Track ID', value: t.track_id, mono: true, full: true },
-                { label: 'Label', value: t.label, highlight: true },
-                { label: 'Recipient', value: t.recipient },
-                { label: 'Subject', value: t.subject, full: true },
-                { label: 'Sender', value: t.sender },
-                { label: 'Campaign', value: t.campaign_id },
-                { label: 'Sent At', value: t.sent_at },
+                { label: 'Opens', value: _val(t.open_count), highlight: true },
+                { label: 'Clicks', value: _val(t.click_count ?? 0), highlight: true },
+                { label: 'Forwards Detected', value: _val(t.forward_count) },
+                { label: 'Is Repeat Open', value: t.is_repeat ? 'Yes' : 'No' },
+                { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : '—' },
+                { label: 'Last Seen', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : '—' },
+                { label: 'Open Date', value: _val(t.open_date) },
+                { label: 'Open Time', value: _val(t.open_time) },
+                { label: 'Day of Week', value: _val(t.day_of_week) },
             ]
         },
         {
-            title: 'Engagement',
+            title: '🌐 Network & Location (Latest Opener)',
             items: [
-                { label: 'First Seen', value: t.first_seen ? new Date(t.first_seen).toLocaleString() : null },
-                { label: 'Last Seen', value: t.last_seen ? new Date(t.last_seen).toLocaleString() : null },
-                { label: 'Opens', value: t.open_count, highlight: true },
-                { label: 'Clicks', value: t.click_count ?? 0, highlight: true },
+                { label: 'IP Address', value: _val(t.ip_address), mono: true },
+                { label: 'ISP', value: _val(t.isp) },
+                { label: 'Organization', value: _val(t.org) },
+                { label: 'ASN', value: _val(t.asn), mono: true },
+                { label: 'Country', value: _val(t.country) },
+                { label: 'Region', value: _val(t.region) },
+                { label: 'City', value: _val(t.city) },
+                { label: 'Location', value: (t.latitude && t.longitude) ? `${t.latitude}, ${t.longitude}` : '—', mono: true, raw: mapLink },
+                { label: 'Timezone', value: _val(t.timezone) },
             ]
         },
         {
-            title: 'Network & Location',
+            title: '💻 Device Fingerprint (Latest Opener)',
             items: [
-                { label: 'IP Address', value: t.ip_address, mono: true },
-                { label: 'ISP', value: t.isp },
-                { label: 'Org / ASN', value: t.org ? `${t.org}${t.asn ? ' · ' + t.asn : ''}` : t.asn },
-                { label: 'Location', value: [t.city, t.region, t.country].filter(Boolean).join(', '), raw: mapLink },
-                { label: 'Coordinates', value: (t.latitude && t.longitude) ? `${t.latitude}, ${t.longitude}` : null, mono: true },
-                { label: 'Timezone', value: t.timezone },
+                { label: 'Browser', value: t.browser ? `${t.browser} ${t.browser_version || ''}`.trim() : '—' },
+                { label: 'OS', value: t.os ? `${t.os} ${t.os_version || ''}`.trim() : '—' },
+                { label: 'Device Type', value: _val(t.device_type) },
+                { label: 'Brand', value: _val(t.device_brand) },
+                { label: 'Mobile', value: t.is_mobile != null ? (t.is_mobile ? 'Yes' : 'No') : '—' },
+                { label: 'Bot', value: t.is_bot != null ? (t.is_bot ? 'Yes' : 'No') : '—' },
+                { label: 'User Agent', value: _val(t.user_agent), full: true, small: true, mono: true },
             ]
         },
         {
-            title: 'Device Fingerprint',
+            title: '📡 HTTP Headers & Context',
             items: [
-                { label: 'Browser', value: t.browser ? `${t.browser} ${t.browser_version || ''}`.trim() : null },
-                { label: 'OS', value: t.os ? `${t.os} ${t.os_version || ''}`.trim() : null },
-                { label: 'Device Type', value: t.device_type },
-                { label: 'Brand', value: t.device_brand },
-                { label: 'Mobile', value: t.is_mobile != null ? (t.is_mobile ? 'Yes' : 'No') : null },
-                { label: 'Bot', value: t.is_bot != null ? (t.is_bot ? 'Yes' : 'No') : null },
-                { label: 'User Agent', value: t.user_agent, full: true, small: true, mono: true },
+                { label: 'Referer', value: _val(t.referer), full: true },
+                { label: 'Accept-Language', value: _val(t.accept_language), full: true },
+                { label: 'Accept-Encoding', value: _val(t.accept_encoding) },
+                { label: 'Accept', value: _val(t.accept_header) },
+                { label: 'Connection', value: _val(t.connection_type) },
+                { label: 'Do Not Track', value: _val(t.do_not_track) },
+                { label: 'Cache-Control', value: _val(t.cache_control) },
+                { label: 'Sec-CH-UA', value: _val(t.sec_ch_ua), full: true, small: true, mono: true },
+                { label: 'CH Platform', value: _val(t.sec_ch_ua_platform) },
+                { label: 'CH Mobile', value: _val(t.sec_ch_ua_mobile) },
             ]
         },
         {
-            title: 'HTTP Headers & Context',
+            title: '✉️ Identity & Email Metadata',
             items: [
-                { label: 'Referer', value: t.referer, full: true },
-                { label: 'Accept-Language', value: t.accept_language },
-                { label: 'Connection', value: t.connection_type },
-                { label: 'Do Not Track', value: t.do_not_track },
-                { label: 'Cache-Control', value: t.cache_control },
-                { label: 'Sec-CH-UA', value: t.sec_ch_ua, full: true, small: true, mono: true },
-                { label: 'CH Platform', value: t.sec_ch_ua_platform },
-                { label: 'CH Mobile', value: t.sec_ch_ua_mobile },
+                { label: 'Track ID', value: _val(t.track_id), mono: true },
+                { label: 'Label', value: _val(t.label), highlight: true },
+                { label: 'Recipient', value: _val(t.recipient) },
+                { label: 'Subject', value: _val(t.subject), full: true },
+                { label: 'Sender', value: _val(t.sender) },
+                { label: 'Campaign', value: _val(t.campaign_id) },
+                { label: 'Sent At', value: _val(t.sent_at) },
             ]
-        }
+        },
     ];
 
-    // Click history section
+    // ── Open Events Timeline ────────────────────────────────────────
+    let opensHtml = '';
+    if (opens.length > 0) {
+        opensHtml = `
+        <div class="modal-section">
+            <h4 class="section-title">🕐 Open Events Timeline (${opens.length})</h4>
+            <div style="max-height:300px; overflow-y:auto;">
+                ${opens.map((o, i) => `
+                    <div style="padding:0.6rem 0; border-bottom:1px solid var(--border); font-size:0.78rem;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                            <span style="font-weight:600; color:var(--accent);">Open #${opens.length - i}</span>
+                            <span style="color:var(--text-muted);">${o.timestamp ? new Date(o.timestamp).toLocaleString() : '—'}</span>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:2px 12px; color:var(--text-secondary);">
+                            <span>IP: <span style="font-family:monospace">${esc(_val(o.ip_address))}</span></span>
+                            <span>ISP: ${esc(_val(o.isp))}</span>
+                            <span>Location: ${[o.city, o.region, o.country].filter(Boolean).join(', ') || '—'}</span>
+                            <span>Browser: ${esc(_val(o.browser))} ${esc(o.browser_version || '')}</span>
+                            <span>OS: ${esc(_val(o.os))}</span>
+                            <span>Device: ${esc(_val(o.device_type))}</span>
+                            ${o.is_forward ? '<span style="color:#f59e0b">⤳ Forwarded</span>' : ''}
+                            ${o.is_repeat ? '<span style="color:var(--text-muted)">↻ Repeat</span>' : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>`;
+    } else {
+        opensHtml = `
+        <div class="modal-section">
+            <h4 class="section-title">🕐 Open Events Timeline</h4>
+            <div style="color:var(--text-muted); font-size:0.82rem; padding:0.5rem 0;">No opens recorded yet. The pixel has not been accessed.</div>
+        </div>`;
+    }
+
+    // ── Click History ───────────────────────────────────────────────
     let clicksHtml = '';
     if (clicks.length > 0) {
         clicksHtml = `
         <div class="modal-section">
-            <h4 class="section-title">Click History (${clicks.length})</h4>
+            <h4 class="section-title">🔗 Click History (${clicks.length})</h4>
             <div style="max-height:200px; overflow-y:auto;">
                 ${clicks.map(c => `
                     <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border); font-size:0.78rem;">
@@ -449,25 +525,29 @@ function renderDetailContent(t, clicks) {
         </div>`;
     }
 
-    document.getElementById('modal-content').innerHTML = sections.map(section => {
-        const vis = section.items.filter(f => f.value != null && f.value !== '');
-        if (!vis.length) return '';
-        return `
-        <div class="modal-section">
-            <h4 class="section-title">${section.title}</h4>
-            <div class="detail-grid">
-                ${vis.map(f => `
-                    <div class="detail-item ${f.full ? 'full-width' : ''}">
-                        <div class="detail-label">${f.label}</div>
-                        <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
-                            ${esc(String(f.value))}
-                            ${f.raw || ''}
+    // ── Render all sections ─────────────────────────────────────────
+    document.getElementById('modal-content').innerHTML =
+        embedSection +
+        sections.map(section => {
+            // Show ALL items, don't filter out nulls
+            return `
+            <div class="modal-section">
+                <h4 class="section-title">${section.title}</h4>
+                <div class="detail-grid">
+                    ${section.items.map(f => `
+                        <div class="detail-item ${f.full ? 'full-width' : ''}">
+                            <div class="detail-label">${f.label}</div>
+                            <div class="detail-value ${f.mono ? 'mono' : ''} ${f.highlight ? 'text-highlight' : ''} ${f.small ? 'text-small' : ''}">
+                                ${esc(String(f.value))}
+                                ${f.raw || ''}
+                            </div>
                         </div>
-                    </div>
-                `).join('')}
-            </div>
-        </div>`;
-    }).join('') + clicksHtml + `
+                    `).join('')}
+                </div>
+            </div>`;
+        }).join('') +
+        opensHtml +
+        clicksHtml + `
     <div class="modal-actions">
         <button class="btn" id="btn-edit-label" aria-label="Edit label">Edit Label</button>
         <button class="btn btn-danger" id="btn-delete-detail" aria-label="Delete pixel">Delete</button>
