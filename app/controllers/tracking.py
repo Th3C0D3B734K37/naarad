@@ -79,13 +79,30 @@ def _is_rate_limited(ip: str) -> bool:
 # ── Helpers ──────────────────────────────────────────────────────────
 
 def get_client_ip() -> str:
-    """Return real client IP, honouring ProxyFix when configured."""
-    if Config.TRUSTED_PROXY_COUNT > 0:
-        return request.remote_addr or ''
-    for header in ('CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-For'):
-        ip = request.headers.get(header)
-        if ip:
-            return ip.split(',')[0].strip()
+    """Return real client IP.
+
+    Always prefer explicit proxy headers (X-Forwarded-For, CF-Connecting-IP,
+    X-Real-IP) over request.remote_addr.  On PaaS platforms like Render,
+    Railway, and Heroku the remote_addr is the *internal* load-balancer IP
+    (10.x.x.x), which is private and useless for geo-lookup.  The real
+    client IP is ONLY available in these headers.
+    """
+    # 1. Cloudflare – most specific, single IP, never spoofed behind CF
+    cf = request.headers.get('CF-Connecting-IP')
+    if cf:
+        return cf.strip()
+
+    # 2. X-Real-IP – set by nginx / Caddy / Render
+    real = request.headers.get('X-Real-IP')
+    if real:
+        return real.strip()
+
+    # 3. X-Forwarded-For – standard; first entry is the real client
+    xff = request.headers.get('X-Forwarded-For')
+    if xff:
+        return xff.split(',')[0].strip()
+
+    # 4. Fallback – only useful when running without a reverse proxy
     return request.remote_addr or ''
 
 
@@ -193,6 +210,12 @@ def track_open(track_id=None):
     P  = placeholder()
     ip = get_client_ip()
 
+    log.info("[TRACK] track_open: track_id=%s ip=%s remote=%s xff=%s xri=%s",
+             track_id or request.args.get('id', '?'), ip,
+             request.remote_addr,
+             request.headers.get('X-Forwarded-For', ''),
+             request.headers.get('X-Real-IP', ''))
+
     # Rate-limit — still return pixel so email clients don't hang
     if _is_rate_limited(ip):
         log.warning("[TRACK] Rate limit hit for ip=%s", ip)
@@ -217,6 +240,10 @@ def track_open(track_id=None):
     ua_info = parse_user_agent(ua)
     headers = extract_headers()
 
+    log.info("[TRACK] Enriched: country=%s isp=%s browser=%s device=%s",
+             geo.get('country', '?'), geo.get('isp', '?'),
+             ua_info.get('browser', '?'), ua_info.get('device_type', '?'))
+
     # Enrich geo asynchronously for cache misses — pixel is returned before this completes
     enrich_track_async(current_app._get_current_object(), track_id, ip)
 
@@ -234,85 +261,77 @@ def track_open(track_id=None):
 
             is_forward = _detect_forward(cursor, P, track_id, ip, geo, ua_info)
 
-            # Use COALESCE so pre-registered tracks get their NULL fields
-            # filled on the first real pixel open, without overwriting
-            # data that already exists from a previous real open.
+            # COALESCE fills NULL fields on first real pixel open without
+            # overwriting data from a previous real open.
+            fwd_incr = 1 if is_forward else 0
+            mobile_int = int(ua_info['is_mobile'])
+            bot_int    = int(ua_info['is_bot'])
+
             cursor.execute(
                 f'''UPDATE tracks
-                    SET open_count    = open_count + 1,
-                        last_seen     = {P},
-                        is_repeat     = CASE WHEN open_count > 0 THEN 1 ELSE 0 END,
-                        forward_count = COALESCE(forward_count, 0) + {1 if is_forward else 0},
-                        -- Timestamp detail (fill if first real open)
-                        open_date     = COALESCE(open_date, {P}),
-                        open_time     = COALESCE(open_time, {P}),
-                        day_of_week   = COALESCE(day_of_week, {P}),
-                        unix_ms       = COALESCE(unix_ms, {P}),
-                        -- Network / geo
-                        ip_address    = COALESCE(ip_address, {P}),
-                        country       = COALESCE(NULLIF(country, 'Local'), NULLIF(country, 'Unknown'), {P}),
-                        region        = COALESCE(NULLIF(region,  'Local'), NULLIF(region,  'Unknown'), {P}),
-                        city          = COALESCE(NULLIF(city,    'Local'), NULLIF(city,    'Unknown'), {P}),
-                        latitude      = CASE WHEN latitude IS NULL OR latitude = 0 THEN {P} ELSE latitude END,
-                        longitude     = CASE WHEN longitude IS NULL OR longitude = 0 THEN {P} ELSE longitude END,
-                        timezone      = COALESCE(NULLIF(timezone, 'Local'), NULLIF(timezone, 'Unknown'), {P}),
-                        isp           = COALESCE(NULLIF(isp,      'Local'), NULLIF(isp,      'Unknown'), {P}),
-                        org           = COALESCE(NULLIF(org, ''), {P}),
-                        asn           = COALESCE(NULLIF(asn, ''), {P}),
-                        -- Device / UA
-                        user_agent    = COALESCE(user_agent, {P}),
-                        browser       = COALESCE(NULLIF(browser, 'Unknown'), {P}),
+                    SET open_count      = COALESCE(open_count, 0) + 1,
+                        last_seen       = {P},
+                        is_repeat       = CASE WHEN COALESCE(open_count, 0) > 0 THEN 1 ELSE 0 END,
+                        forward_count   = COALESCE(forward_count, 0) + {fwd_incr},
+                        open_date       = COALESCE(open_date, {P}),
+                        open_time       = COALESCE(open_time, {P}),
+                        day_of_week     = COALESCE(day_of_week, {P}),
+                        unix_ms         = COALESCE(unix_ms, {P}),
+                        ip_address      = COALESCE(ip_address, {P}),
+                        country         = COALESCE(NULLIF(country, 'Local'), NULLIF(country, 'Unknown'), {P}),
+                        region          = COALESCE(NULLIF(region, 'Local'), NULLIF(region, 'Unknown'), {P}),
+                        city            = COALESCE(NULLIF(city, 'Local'), NULLIF(city, 'Unknown'), {P}),
+                        latitude        = CASE WHEN latitude IS NULL OR latitude = 0 THEN {P} ELSE latitude END,
+                        longitude       = CASE WHEN longitude IS NULL OR longitude = 0 THEN {P} ELSE longitude END,
+                        timezone        = COALESCE(NULLIF(timezone, 'Local'), NULLIF(timezone, 'Unknown'), {P}),
+                        isp             = COALESCE(NULLIF(isp, 'Local'), NULLIF(isp, 'Unknown'), {P}),
+                        org             = COALESCE(NULLIF(org, ''), {P}),
+                        asn             = COALESCE(NULLIF(asn, ''), {P}),
+                        user_agent      = COALESCE(user_agent, {P}),
+                        browser         = COALESCE(NULLIF(browser, 'Unknown'), {P}),
                         browser_version = COALESCE(browser_version, {P}),
-                        os            = COALESCE(NULLIF(os, 'Unknown'), {P}),
-                        os_version    = COALESCE(os_version, {P}),
-                        device_type   = COALESCE(NULLIF(device_type, 'Unknown'), {P}),
-                        device_brand  = COALESCE(NULLIF(device_brand, 'Unknown'), {P}),
-                        is_mobile     = COALESCE(is_mobile, {P}),
-                        is_bot        = COALESCE(is_bot, {P}),
-                        -- Headers
-                        referer       = COALESCE(NULLIF(referer, 'Direct'), {P}),
+                        os              = COALESCE(NULLIF(os, 'Unknown'), {P}),
+                        os_version      = COALESCE(os_version, {P}),
+                        device_type     = COALESCE(NULLIF(device_type, 'Unknown'), {P}),
+                        device_brand    = COALESCE(NULLIF(device_brand, 'Unknown'), {P}),
+                        is_mobile       = COALESCE(is_mobile, {P}),
+                        is_bot          = COALESCE(is_bot, {P}),
+                        referer         = COALESCE(NULLIF(referer, 'Direct'), {P}),
                         accept_language = COALESCE(NULLIF(accept_language, ''), {P}),
                         accept_encoding = COALESCE(NULLIF(accept_encoding, ''), {P}),
                         accept_header   = COALESCE(NULLIF(accept_header, ''), {P}),
                         connection_type = COALESCE(NULLIF(connection_type, ''), {P}),
                         do_not_track    = COALESCE(NULLIF(do_not_track, ''), {P}),
                         cache_control   = COALESCE(NULLIF(cache_control, ''), {P}),
-                        sec_ch_ua           = COALESCE(NULLIF(sec_ch_ua, ''), {P}),
+                        sec_ch_ua       = COALESCE(NULLIF(sec_ch_ua, ''), {P}),
                         sec_ch_ua_mobile    = COALESCE(NULLIF(sec_ch_ua_mobile, ''), {P}),
                         sec_ch_ua_platform  = COALESCE(NULLIF(sec_ch_ua_platform, ''), {P}),
-                        -- Email metadata (fill if not pre-registered)
-                        sender        = COALESCE(NULLIF(sender, ''), {P}),
-                        recipient     = COALESCE(NULLIF(recipient, ''), {P}),
-                        subject       = COALESCE(NULLIF(subject, ''), {P}),
-                        sent_at       = COALESCE(NULLIF(sent_at, ''), {P}),
-                        campaign_id   = COALESCE(campaign_id, {P})
+                        sender          = COALESCE(NULLIF(sender, ''), {P}),
+                        recipient       = COALESCE(NULLIF(recipient, ''), {P}),
+                        subject         = COALESCE(NULLIF(subject, ''), {P}),
+                        sent_at         = COALESCE(NULLIF(sent_at, ''), {P}),
+                        campaign_id     = COALESCE(campaign_id, {P})
                     WHERE track_id = {P}''',
                 (
                     ts['iso'],
-                    # Timestamp detail
                     ts['date'], ts['time'], ts['day_of_week'], ts['unix_ms'],
-                    # Network / geo
                     ip,
                     geo['country'], geo['region'], geo['city'],
                     geo['lat'], geo['lon'],
                     geo['timezone'], geo['isp'],
                     geo.get('org', ''), geo.get('asn', ''),
-                    # Device / UA
                     ua,
                     ua_info['browser'], ua_info['browser_version'],
                     ua_info['os'], ua_info['os_version'],
                     ua_info['device_type'], ua_info['device_brand'],
-                    ua_info['is_mobile'], ua_info['is_bot'],
-                    # Headers
+                    mobile_int, bot_int,
                     headers['referer'], headers['accept_language'],
                     headers['accept_encoding'], headers['accept_header'],
                     headers['connection_type'], headers['do_not_track'],
                     headers['cache_control'], headers['sec_ch_ua'],
                     headers['sec_ch_ua_mobile'], headers['sec_ch_ua_platform'],
-                    # Email metadata
                     sender, recipient, subject, sent_at,
                     campaign_id,
-                    # WHERE
                     track_id,
                 )
             )
@@ -366,7 +385,7 @@ def track_open(track_id=None):
                 ua_info['browser'], ua_info['browser_version'],
                 ua_info['os'], ua_info['os_version'],
                 ua_info['device_type'], ua_info['device_brand'],
-                ua_info['is_mobile'], ua_info['is_bot'],
+                int(ua_info['is_mobile']), int(ua_info['is_bot']),
                 headers['referer'], headers['accept_language'],
                 headers['accept_encoding'], headers['accept_header'],
                 headers['connection_type'], headers['do_not_track'],
@@ -400,7 +419,7 @@ def track_open(track_id=None):
         )
 
     except Exception as e:
-        log.error("[TRACK] DB error for track_id=%s: %s", track_id, e)
+        log.error("[TRACK] DB error for track_id=%s: %s", track_id, e, exc_info=True)
         try:
             conn.rollback()
         except Exception:
@@ -469,7 +488,7 @@ def _insert_open_event(cursor, P: str, ctx: dict) -> None:
         ua_info['browser'], ua_info['browser_version'],
         ua_info['os'], ua_info['os_version'],
         ua_info['device_type'], ua_info['device_brand'],
-        ua_info['is_mobile'], ua_info['is_bot'],
+        int(ua_info['is_mobile']), int(ua_info['is_bot']),
         headers['referer'], headers['accept_language'],
         ctx['is_repeat'], ctx['is_forward'],
         fp,
@@ -555,7 +574,7 @@ def track_click(track_id, target_url):
             ua_info['browser'], ua_info['browser_version'],
             ua_info['os'], ua_info['os_version'],
             ua_info['device_type'], ua_info['device_brand'],
-            ua_info['is_mobile'], ua_info['is_bot'],
+            int(ua_info['is_mobile']), int(ua_info['is_bot']),
             referer,
             sender, recipient, subject, sent_at,
             fp,
@@ -595,7 +614,7 @@ def track_click(track_id, target_url):
                 ua_info['browser'], ua_info['browser_version'],
                 ua_info['os'], ua_info['os_version'],
                 ua_info['device_type'], ua_info['device_brand'],
-                ua_info['is_mobile'], ua_info['is_bot'],
+                int(ua_info['is_mobile']), int(ua_info['is_bot']),
                 referer,
                 0, 1, 0,  # open_count, click_count, forward_count
                 0, 0,     # is_repeat, is_forward
@@ -640,7 +659,7 @@ def track_click(track_id, target_url):
                     geo.get('org', ''), geo.get('asn', ''),
                     ua, ua_info['browser'], ua_info['browser_version'],
                     ua_info['os'], ua_info['os_version'], ua_info['device_type'],
-                    ua_info['device_brand'], ua_info['is_mobile'], ua_info['is_bot'],
+                    ua_info['device_brand'], int(ua_info['is_mobile']), int(ua_info['is_bot']),
                     track_id
                 )
             )
